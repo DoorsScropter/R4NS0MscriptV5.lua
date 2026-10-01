@@ -6,6 +6,7 @@ local Workspace = game:GetService("Workspace")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local Debris = game:GetService("Debris")
+local HttpService = game:GetService("HttpService")
 
 local player = Players.LocalPlayer or Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
 local playerGui = player:WaitForChild("PlayerGui")
@@ -40,7 +41,7 @@ local PICKUP_DISTANCE = 10 -- how close you must be to see the "Collect Coins" /
 
 -- CD-1 TOOL SETTINGS
 local CD_ASSET_ID = 116084743176043
-local CD_CHANCE = 0.03 -- chance per spawn (only ONE CD ever spawns per run)
+local CD_CHANCE = 0.03 -- DEFAULT chance per spawn (the config window can change it; only ONE CD spawns per round)
 local CD_TOOL_NAME = "CD-1"
 local CD_SCALE = 0.4 -- size of the CD (on the ground AND in your hand). 1 = original size
 local CD_GRIP = CFrame.new(0, 0, 0) -- how the CD sits in your hand (only used if the model isn't already a Tool)
@@ -48,7 +49,7 @@ local CD_GRIP = CFrame.new(0, 0, 0) -- how the CD sits in your hand (only used i
 -- CRUCIFIX SETTINGS
 local CRUCIFIX_ASSET_ID = 11650774915 -- the pickup / tool model
 local CRUCIFIX_CHANCE = 0.05 -- 5% chance per spawn cycle
-local CRUCIFIX_MAX_SPAWNS = 1 -- how many crucifixes can spawn per run (raise it if you want more)
+local CRUCIFIX_MAX_SPAWNS = 1 -- how many crucifixes can spawn per round (raise it if you want more)
 local CRUCIFIX_TOOL_NAME = "Crucifix"
 local CRUCIFIX_SCALE = 1
 local CRUCIFIX_GRIP = CFrame.new(0, 0, 0) -- how it sits in your hand. If it isn't straight, try CFrame.Angles(math.rad(90), 0, 0) / (0, 0, math.rad(90)) / (math.rad(-90), 0, 0)
@@ -70,7 +71,7 @@ local CRUCIFIX_SOUND_VOLUME = 6
 -- TV SETTINGS
 local TV_ASSET_ID = 17307663311 -- TV model
 local TV_SCALE = 1.5 -- HOW BIG THE TV IS (1 = original size, 2 = twice as big, 3 = three times as big...)
-local TV_CHANCE = 0.03 -- chance per spawn (only ONE TV ever spawns per run)
+local TV_CHANCE = 0.03 -- DEFAULT chance per spawn (the config window can change it; only ONE TV exists at a time)
 local TV_ROTATION = CFrame.Angles(0, 0, 0) -- if the TV faces the wrong way, try CFrame.Angles(0, math.rad(90), 0) / (0, math.rad(180), 0) / (0, math.rad(-90), 0)
 local TV_STATIC_SOUND_ID = 138347177735590
 local TV_IDLE_STATIC_VOLUME = 0 -- quiet static while the TV just stands there (0 = silent)
@@ -124,7 +125,7 @@ local NORMAL_CLONE_LIGHT_RANGE = 16
 
 -- DRAWER SETTINGS
 local DRAWER_ASSET_ID = 11213956867
-local DRAWER_CHANCE = 0.10 -- 10% chance per spawn cycle that a drawer spawns instead of a coin
+local DRAWER_CHANCE = 0.10 -- DEFAULT chance per spawn cycle that a drawer spawns instead of a coin (the config window can change it)
 local DRAWER_COIN_CHANCE = 0.5 -- chance that looting a drawer gives you a coin (0.5 = 50%)
 local DRAWER_ROTATION = CFrame.Angles(0, 0, 0) -- if the drawer faces the wrong way, try (0, math.rad(90), 0) / (0, math.rad(180), 0) / (0, math.rad(-90), 0)
 local DRAWER_PERSIST = false -- false = drawers are removed when R4NS0M ends, true = they stay forever like the TV
@@ -140,10 +141,54 @@ local POPUP_FLICKER_CHECK = 1
 local POPUP_FLICKER_TIME = 0.1 -- how long the red flicker lasts
 local POPUP_FLICKER_IMAGE_ID = 12436809176 -- image shown on the red flicker (only inside that window)
 
--- Only one TV and one CD can ever spawn
-local tvSpawned = false
+-- CONFIG FILE (saves your config window values so they are still there next time you execute)
+local CONFIG_FILE = "R4NS0M_config.json"
+
+-- Only one CD / crucifix per round
 local cdSpawned = false
 local crucifixSpawnCount = 0
+
+--------------------------------------------------------------------------------
+-- SETTINGS (edited from the config window, saved to a file right away)
+--------------------------------------------------------------------------------
+local function round2(x)
+	return math.round(x * 10000) / 100
+end
+
+local settings = {
+	ransomEvery = 0, -- seconds between automatic R4NS0M spawns (0 = off)
+	cdRate = round2(CD_CHANCE), -- percent per spawn cycle
+	tvRate = round2(TV_CHANCE), -- percent per spawn cycle
+	drawerRate = round2(DRAWER_CHANCE), -- percent per spawn cycle
+}
+
+local HAS_FILES = (typeof(writefile) == "function") and (typeof(readfile) == "function") and (typeof(isfile) == "function")
+
+local function saveSettings()
+	if not HAS_FILES then return false end
+	local ok = pcall(function()
+		writefile(CONFIG_FILE, HttpService:JSONEncode(settings))
+	end)
+	return ok
+end
+
+local function loadSettings()
+	if not HAS_FILES then return end
+	pcall(function()
+		if isfile(CONFIG_FILE) then
+			local data = HttpService:JSONDecode(readfile(CONFIG_FILE))
+			if type(data) == "table" then
+				for k in pairs(settings) do
+					if type(data[k]) == "number" then
+						settings[k] = data[k]
+					end
+				end
+			end
+		end
+	end)
+end
+
+loadSettings()
 
 -- Clean up any old GUI or leftover sounds from previous executions
 if playerGui:FindFirstChild("JumpscareDownloadGui") then
@@ -157,6 +202,9 @@ if playerGui:FindFirstChild("FailureJumpscareGui") then
 end
 if playerGui:FindFirstChild("VictoryPopupGui") then
 	playerGui.VictoryPopupGui:Destroy()
+end
+if playerGui:FindFirstChild("R4NS0MConfigGui") then
+	playerGui.R4NS0MConfigGui:Destroy()
 end
 if SoundService:FindFirstChild("JumpscareSound") then
 	SoundService.JumpscareSound:Destroy()
@@ -1576,56 +1624,12 @@ local function spawnTV(groundPos, playerPos)
 end
 
 --------------------------------------------------------------------------------
--- PRE-PHASE ("stand still" warning):
---   1) image in the top-left corner (+ spawn sound)
---   2) it disappears, a new image shows in the center on a dark red bg
---   3) both disappear for a moment
---   4) the first image comes back to the center on a half transparent dark red bg that flickers
---   moving while he is at the center = jumpscare + downloading text
+-- ROUND STATE (shared by the "stand still" warning, the round itself and the config window)
 --------------------------------------------------------------------------------
-local preGui = Instance.new("ScreenGui")
-preGui.Name = "JumpscareDownloadGui"
-preGui.IgnoreGuiInset = true
-preGui.ResetOnSpawn = false
-preGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-preGui.Parent = playerGui
-
--- dark red background (hidden until it is needed)
-local preBg = Instance.new("Frame")
-preBg.Size = UDim2.new(1, 0, 1, 0)
-preBg.BackgroundColor3 = Color3.fromRGB(80, 0, 0)
-preBg.BackgroundTransparency = 1
-preBg.BorderSizePixel = 0
-preBg.Visible = false
-preBg.ZIndex = 1
-preBg.Parent = preGui
-
-local function makePreImage(id, size, anchor, pos)
-	local img = Instance.new("ImageLabel")
-	img.Image = "rbxthumb://type=Asset&id=" .. tostring(id) .. "&w=420&h=420"
-	img.BackgroundTransparency = 1
-	img.Size = UDim2.new(0, size, 0, size)
-	img.AnchorPoint = anchor
-	img.Position = pos
-	img.ZIndex = 2
-	img.Visible = false
-	img.Parent = preGui
-	return img
-end
-
-local cornerImage = makePreImage(PRE_IMAGE_A, PRE_CORNER_SIZE, Vector2.new(0, 0), UDim2.new(0, 20, 0, 20)) -- top-left corner
-local flashImage = makePreImage(PRE_IMAGE_B, PRE_CENTER_SIZE, Vector2.new(0.5, 0.5), UDim2.new(0.5, 0, 0.5, 0))
-local stareImage = makePreImage(PRE_IMAGE_A, PRE_CENTER_SIZE, Vector2.new(0.5, 0.5), UDim2.new(0.5, 0, 0.5, 0))
-cornerImage.Visible = true
-
-local spawnSound = Instance.new("Sound")
-spawnSound.Name = "SpawnSound"
-spawnSound.SoundId = "rbxassetid://92453621152905"
-spawnSound.Volume = 5
-spawnSound.Parent = SoundService
-spawnSound:Play()
-
+local preGui = nil
+local spawnSound = nil
 local mainSequenceTriggered = false
+local roundActive = false -- true from the moment R4NS0M spawns until it ends
 
 local function startMainSequence()
 	if mainSequenceTriggered then return end
@@ -1815,7 +1819,9 @@ local function startMainSequence()
 				
 				local themeExt = nil
 				
+				-- Called every time the round ends (win / fail / crucified): stops the theme and frees the round
 				local function stopTheme()
+					roundActive = false
 					if themeSound then
 						themeSound:Stop()
 						themeSound:Destroy()
@@ -2786,7 +2792,7 @@ local function startMainSequence()
 					return true
 				end
 				
-				-- COIN / CD / CRUCIFIX / TV / DRAWER SPAWNER
+				-- COIN / CD / CRUCIFIX / TV / DRAWER SPAWNER (the CD / TV / drawer chances come from the config window)
 				local function spawnDoorsCompatibleCoin()
 					task.spawn(function()
 						local character = player.Character or player.CharacterAdded:Wait()
@@ -2796,15 +2802,14 @@ local function startMainSequence()
 						local groundPos = findGroundPosition(rootPart, character)
 						if not groundPos then return end
 						
-						-- TV roll (only ONE TV ever spawns)
-						if not tvSpawned and tvTemplate ~= nil and math.random() < TV_CHANCE then
-							tvSpawned = true
+						-- TV roll (only ONE TV exists at a time; it stays after the round ends)
+						if not Workspace:FindFirstChild("R4NS0M_TV") and tvTemplate ~= nil and math.random() < settings.tvRate / 100 then
 							spawnTV(groundPos, rootPart.Position)
 							return
 						end
 						
-						-- Drawer roll (10% chance, spawns instead of a coin this cycle)
-						if drawerTemplate ~= nil and math.random() < DRAWER_CHANCE then
+						-- Drawer roll (spawns instead of a coin this cycle)
+						if drawerTemplate ~= nil and math.random() < settings.drawerRate / 100 then
 							if spawnDrawer(groundPos, rootPart.Position) then
 								return
 							end
@@ -2816,7 +2821,7 @@ local function startMainSequence()
 							crucifixSpawnCount += 1
 							kind = "crucifix"
 							print("[R4NS0M] A crucifix spawned at " .. tostring(groundPos))
-						elseif not cdSpawned and cdToolTemplate ~= nil and math.random() < CD_CHANCE then
+						elseif not cdSpawned and cdToolTemplate ~= nil and math.random() < settings.cdRate / 100 then
 							cdSpawned = true
 							kind = "cd"
 							print("[R4NS0M] A CD-1 spawned at " .. tostring(groundPos))
@@ -2934,87 +2939,440 @@ local function startMainSequence()
 end
 
 --------------------------------------------------------------------------------
--- TIMELINE CONTROLLER FOR THE PRE-PHASE ("stand still" warning)
+-- SPAWN R4NS0M ("stand still" warning, then the round)
+--   1) image in the top-left corner (+ spawn sound)
+--   2) it disappears, a new image shows in the center on a dark red bg
+--   3) both disappear for a moment
+--   4) the first image comes back to the center on a half transparent dark red bg that flickers
+--   moving while he is at the center = jumpscare + downloading text
+-- Called by the "Spawn Ransom" button and by the automatic timer. Returns false if a round is already running.
 --------------------------------------------------------------------------------
-task.spawn(function()
-	local detecting = false -- moving only counts while this is true
+local function spawnRansom()
+	if roundActive then return false end
+	roundActive = true
+	mainSequenceTriggered = false
+	cdSpawned = false
+	crucifixSpawnCount = 0
 	
-	local function isMoving()
-		local char = player.Character
-		local hum = char and char:FindFirstChildOfClass("Humanoid")
-		if hum and hum.MoveDirection.Magnitude > 0 then
-			return true
-		end
-		return UserInputService:IsKeyDown(Enum.KeyCode.W) or UserInputService:IsKeyDown(Enum.KeyCode.A)
-			or UserInputService:IsKeyDown(Enum.KeyCode.S) or UserInputService:IsKeyDown(Enum.KeyCode.D)
-			or UserInputService:IsKeyDown(Enum.KeyCode.Up) or UserInputService:IsKeyDown(Enum.KeyCode.Down)
-			or UserInputService:IsKeyDown(Enum.KeyCode.Left) or UserInputService:IsKeyDown(Enum.KeyCode.Right)
+	local myGui = Instance.new("ScreenGui")
+	myGui.Name = "JumpscareDownloadGui"
+	myGui.IgnoreGuiInset = true
+	myGui.ResetOnSpawn = false
+	myGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	myGui.Parent = playerGui
+	preGui = myGui
+	
+	-- dark red background (hidden until it is needed)
+	local preBg = Instance.new("Frame")
+	preBg.Size = UDim2.new(1, 0, 1, 0)
+	preBg.BackgroundColor3 = Color3.fromRGB(80, 0, 0)
+	preBg.BackgroundTransparency = 1
+	preBg.BorderSizePixel = 0
+	preBg.Visible = false
+	preBg.ZIndex = 1
+	preBg.Parent = myGui
+	
+	local function makePreImage(id, size, anchor, pos)
+		local img = Instance.new("ImageLabel")
+		img.Image = "rbxthumb://type=Asset&id=" .. tostring(id) .. "&w=420&h=420"
+		img.BackgroundTransparency = 1
+		img.Size = UDim2.new(0, size, 0, size)
+		img.AnchorPoint = anchor
+		img.Position = pos
+		img.ZIndex = 2
+		img.Visible = false
+		img.Parent = myGui
+		return img
 	end
 	
-	local waitConn
-	waitConn = RunService.RenderStepped:Connect(function()
-		if detecting and not mainSequenceTriggered and isMoving() then
-			startMainSequence() -- you moved while he is at the center: jumpscare + downloading text
+	local cornerImage = makePreImage(PRE_IMAGE_A, PRE_CORNER_SIZE, Vector2.new(0, 0), UDim2.new(0, 20, 0, 20)) -- top-left corner
+	local flashImage = makePreImage(PRE_IMAGE_B, PRE_CENTER_SIZE, Vector2.new(0.5, 0.5), UDim2.new(0.5, 0, 0.5, 0))
+	local stareImage = makePreImage(PRE_IMAGE_A, PRE_CENTER_SIZE, Vector2.new(0.5, 0.5), UDim2.new(0.5, 0, 0.5, 0))
+	cornerImage.Visible = true
+	
+	local mySound = Instance.new("Sound")
+	mySound.Name = "SpawnSound"
+	mySound.SoundId = "rbxassetid://92453621152905"
+	mySound.Volume = 5
+	mySound.Parent = SoundService
+	mySound:Play()
+	spawnSound = mySound
+	
+	task.spawn(function()
+		local detecting = false -- moving only counts while this is true
+		
+		local function isMoving()
+			local char = player.Character
+			local hum = char and char:FindFirstChildOfClass("Humanoid")
+			if hum and hum.MoveDirection.Magnitude > 0 then
+				return true
+			end
+			return UserInputService:IsKeyDown(Enum.KeyCode.W) or UserInputService:IsKeyDown(Enum.KeyCode.A)
+				or UserInputService:IsKeyDown(Enum.KeyCode.S) or UserInputService:IsKeyDown(Enum.KeyCode.D)
+				or UserInputService:IsKeyDown(Enum.KeyCode.Up) or UserInputService:IsKeyDown(Enum.KeyCode.Down)
+				or UserInputService:IsKeyDown(Enum.KeyCode.Left) or UserInputService:IsKeyDown(Enum.KeyCode.Right)
 		end
+		
+		local waitConn
+		waitConn = RunService.RenderStepped:Connect(function()
+			if detecting and not mainSequenceTriggered and isMoving() then
+				startMainSequence() -- you moved while he is at the center: jumpscare + downloading text
+			end
+		end)
+		
+		local function aborted()
+			if mainSequenceTriggered then
+				waitConn:Disconnect()
+				return true
+			end
+			return false
+		end
+		
+		-- 1) image in the top-left corner (spawn sound is already playing)
+		task.wait(PRE_CORNER_TIME)
+		if aborted() then return end
+		cornerImage.Visible = false
+		
+		-- 2) a different image in the center on a dark red bg
+		preBg.BackgroundColor3 = Color3.fromRGB(80, 0, 0)
+		preBg.BackgroundTransparency = 0
+		preBg.Visible = true
+		flashImage.Visible = true
+		if PRE_DETECT_IN_FLASH then
+			detecting = true
+		end
+		task.wait(PRE_FLASH_TIME)
+		if aborted() then return end
+		
+		-- 3) everything disappears for a moment
+		flashImage.Visible = false
+		preBg.Visible = false
+		task.wait(PRE_GAP_TIME)
+		if aborted() then return end
+		
+		-- 4) the first image comes back to the center on a half transparent dark red bg that flickers
+		stareImage.Visible = true
+		preBg.BackgroundTransparency = 0.5
+		preBg.Visible = true
+		detecting = true
+		
+		local t0 = os.clock()
+		local nextFlip = 0
+		local bright = false
+		while os.clock() - t0 < PRE_STARE_TIME and not mainSequenceTriggered do
+			if os.clock() >= nextFlip then
+				bright = not bright
+				nextFlip = os.clock() + PRE_FLICKER_SPEED
+				preBg.BackgroundTransparency = bright and 0.5 or 0.85
+				preBg.BackgroundColor3 = bright and Color3.fromRGB(70, 0, 0) or Color3.fromRGB(130, 0, 0)
+			end
+			RunService.Heartbeat:Wait()
+		end
+		
+		waitConn:Disconnect()
+		if mainSequenceTriggered then return end
+		
+		-- you stayed still the whole time: everything goes away and R4NS0M can spawn again
+		myGui:Destroy()
+		mySound:Destroy()
+		roundActive = false
 	end)
 	
-	local function aborted()
-		if mainSequenceTriggered then
-			waitConn:Disconnect()
-			return true
-		end
-		return false
-	end
-	
-	-- 1) image in the top-left corner (spawn sound is already playing)
-	task.wait(PRE_CORNER_TIME)
-	if aborted() then return end
-	cornerImage.Visible = false
-	
-	-- 2) a different image in the center on a dark red bg
-	preBg.BackgroundColor3 = Color3.fromRGB(80, 0, 0)
-	preBg.BackgroundTransparency = 0
-	preBg.Visible = true
-	flashImage.Visible = true
-	if PRE_DETECT_IN_FLASH then
-		detecting = true
-	end
-	task.wait(PRE_FLASH_TIME)
-	if aborted() then return end
-	
-	-- 3) everything disappears for a moment
-	flashImage.Visible = false
-	preBg.Visible = false
-	task.wait(PRE_GAP_TIME)
-	if aborted() then return end
-	
-	-- 4) the first image comes back to the center on a half transparent dark red bg that flickers
-	stareImage.Visible = true
-	preBg.BackgroundTransparency = 0.5
-	preBg.Visible = true
-	detecting = true
-	
-	local t0 = os.clock()
-	local nextFlip = 0
-	local bright = false
-	while os.clock() - t0 < PRE_STARE_TIME and not mainSequenceTriggered do
-		if os.clock() >= nextFlip then
-			bright = not bright
-			nextFlip = os.clock() + PRE_FLICKER_SPEED
-			preBg.BackgroundTransparency = bright and 0.5 or 0.85
-			preBg.BackgroundColor3 = bright and Color3.fromRGB(70, 0, 0) or Color3.fromRGB(130, 0, 0)
-		end
-		RunService.Heartbeat:Wait()
-	end
-	
-	waitConn:Disconnect()
-	if mainSequenceTriggered then return end
-	
-	-- you stayed still the whole time: everything goes away
-	if preGui then
-		preGui:Destroy()
-	end
-	if spawnSound then
-		spawnSound:Destroy()
+	return true
+end
+
+--------------------------------------------------------------------------------
+-- CONFIG WINDOW (same look as the pop-up windows). Everything you change is applied and saved right away.
+--------------------------------------------------------------------------------
+local cfgGui = Instance.new("ScreenGui")
+cfgGui.Name = "R4NS0MConfigGui"
+cfgGui.IgnoreGuiInset = true
+cfgGui.ResetOnSpawn = false
+cfgGui.DisplayOrder = 50
+cfgGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+cfgGui.Parent = playerGui
+
+local cfgWindow = Instance.new("Frame")
+cfgWindow.Name = "ConfigWindow"
+cfgWindow.BackgroundColor3 = Color3.fromRGB(60, 0, 0)
+cfgWindow.BorderSizePixel = 0
+cfgWindow.Size = UDim2.new(0, 300, 0, 262)
+cfgWindow.AnchorPoint = Vector2.new(0.5, 0.5)
+cfgWindow.Position = UDim2.new(0.5, 0, 0.5, 0)
+cfgWindow.Parent = cfgGui
+
+local cfgCorner = Instance.new("UICorner")
+cfgCorner.CornerRadius = UDim.new(0, 5)
+cfgCorner.Parent = cfgWindow
+
+local cfgInner = Instance.new("Frame")
+cfgInner.Name = "InnerContainer"
+cfgInner.Size = UDim2.new(1, -4, 1, -4)
+cfgInner.Position = UDim2.new(0, 2, 0, 2)
+cfgInner.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
+cfgInner.BorderSizePixel = 0
+cfgInner.Parent = cfgWindow
+
+local cfgInnerCorner = Instance.new("UICorner")
+cfgInnerCorner.CornerRadius = UDim.new(0, 4)
+cfgInnerCorner.Parent = cfgInner
+
+local cfgHeader = Instance.new("Frame")
+cfgHeader.Name = "HeaderBar"
+cfgHeader.Size = UDim2.new(1, 0, 0, 22)
+cfgHeader.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+cfgHeader.BorderSizePixel = 0
+cfgHeader.Parent = cfgInner
+
+local cfgHeaderCorner = Instance.new("UICorner")
+cfgHeaderCorner.CornerRadius = UDim.new(0, 4)
+cfgHeaderCorner.Parent = cfgHeader
+
+local cfgTitle = Instance.new("TextLabel")
+cfgTitle.Name = "HeaderTitle"
+cfgTitle.Size = UDim2.new(1, -36, 1, 0)
+cfgTitle.Position = UDim2.new(0, 6, 0, 0)
+cfgTitle.BackgroundTransparency = 1
+cfgTitle.Text = "R4NS0M CONFIG"
+cfgTitle.TextColor3 = Color3.fromRGB(20, 20, 20)
+cfgTitle.TextSize = 11
+cfgTitle.Font = Enum.Font.SourceSansBold
+cfgTitle.TextXAlignment = Enum.TextXAlignment.Left
+cfgTitle.Parent = cfgHeader
+
+local closeBtn = Instance.new("TextButton")
+closeBtn.Name = "CloseButton"
+closeBtn.Size = UDim2.new(0, 22, 0, 16)
+closeBtn.AnchorPoint = Vector2.new(1, 0.5)
+closeBtn.Position = UDim2.new(1, -4, 0.5, 0)
+closeBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+closeBtn.BorderSizePixel = 0
+closeBtn.Text = "X"
+closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeBtn.TextSize = 12
+closeBtn.Font = Enum.Font.SourceSansBold
+closeBtn.Parent = cfgHeader
+
+local closeCorner = Instance.new("UICorner")
+closeCorner.CornerRadius = UDim.new(0, 3)
+closeCorner.Parent = closeBtn
+
+-- small tab that reopens the window after you close it
+local openTab = Instance.new("TextButton")
+openTab.Name = "ConfigOpenTab"
+openTab.Size = UDim2.new(0, 72, 0, 26)
+openTab.AnchorPoint = Vector2.new(0, 0.5)
+openTab.Position = UDim2.new(0, 8, 0.5, 0)
+openTab.BackgroundColor3 = Color3.fromRGB(60, 0, 0)
+openTab.BorderSizePixel = 0
+openTab.Text = "CONFIG"
+openTab.TextColor3 = Color3.fromRGB(255, 255, 255)
+openTab.TextSize = 13
+openTab.Font = Enum.Font.SourceSansBold
+openTab.Visible = false
+openTab.Parent = cfgGui
+
+local openCorner = Instance.new("UICorner")
+openCorner.CornerRadius = UDim.new(0, 5)
+openCorner.Parent = openTab
+
+closeBtn.Activated:Connect(function()
+	cfgWindow.Visible = false
+	openTab.Visible = true
+end)
+openTab.Activated:Connect(function()
+	cfgWindow.Visible = true
+	openTab.Visible = false
+end)
+
+-- drag the window by its white header
+local dragging, dragStart, dragOrigin = false, nil, nil
+cfgHeader.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		dragging = true
+		dragStart = input.Position
+		dragOrigin = cfgWindow.Position
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				dragging = false
+			end
+		end)
 	end
 end)
+local dragConn = UserInputService.InputChanged:Connect(function(input)
+	if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+		local d = input.Position - dragStart
+		cfgWindow.Position = UDim2.new(dragOrigin.X.Scale, dragOrigin.X.Offset + d.X, dragOrigin.Y.Scale, dragOrigin.Y.Offset + d.Y)
+	end
+end)
+cfgGui.Destroying:Connect(function()
+	dragConn:Disconnect()
+end)
+
+-- content area
+local content = Instance.new("Frame")
+content.Name = "Content"
+content.BackgroundTransparency = 1
+content.Size = UDim2.new(1, 0, 1, -22)
+content.Position = UDim2.new(0, 0, 0, 22)
+content.Parent = cfgInner
+
+local contentPad = Instance.new("UIPadding")
+contentPad.PaddingTop = UDim.new(0, 8)
+contentPad.PaddingBottom = UDim.new(0, 8)
+contentPad.PaddingLeft = UDim.new(0, 8)
+contentPad.PaddingRight = UDim.new(0, 8)
+contentPad.Parent = content
+
+local contentList = Instance.new("UIListLayout")
+contentList.Padding = UDim.new(0, 6)
+contentList.SortOrder = Enum.SortOrder.LayoutOrder
+contentList.Parent = content
+
+-- status line
+local defaultStatus = HAS_FILES and "Changes save instantly" or "Changes apply, but can't be saved (no file access)"
+local statusLabel = Instance.new("TextLabel")
+statusLabel.Name = "Status"
+statusLabel.LayoutOrder = 5
+statusLabel.Size = UDim2.new(1, 0, 0, 14)
+statusLabel.BackgroundTransparency = 1
+statusLabel.Text = defaultStatus
+statusLabel.TextColor3 = Color3.fromRGB(255, 220, 220)
+statusLabel.TextSize = 11
+statusLabel.Font = Enum.Font.SourceSans
+statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+statusLabel.Parent = content
+
+local statusToken = 0
+local function setStatus(text)
+	statusToken += 1
+	local my = statusToken
+	statusLabel.Text = text
+	task.delay(1.8, function()
+		if statusToken == my and statusLabel.Parent then
+			statusLabel.Text = defaultStatus
+		end
+	end)
+end
+
+-- AUTOMATIC SPAWNING: every `ransomEvery` seconds the corner image pops up (skipped while a round is running)
+local autoVersion = 0
+local function restartAuto()
+	autoVersion += 1
+	local my = autoVersion
+	local every = settings.ransomEvery
+	if every <= 0 then return end
+	task.spawn(function()
+		while cfgGui.Parent and autoVersion == my do
+			local t0 = os.clock()
+			while cfgGui.Parent and autoVersion == my and os.clock() - t0 < every do
+				task.wait(0.1)
+			end
+			if cfgGui.Parent and autoVersion == my and not roundActive then
+				spawnRansom()
+			end
+		end
+	end)
+end
+
+-- one row: label on the left, number box on the right
+local function makeRow(order, labelText, key, minV, maxV, onChange)
+	local row = Instance.new("Frame")
+	row.LayoutOrder = order
+	row.Size = UDim2.new(1, 0, 0, 34)
+	row.BackgroundTransparency = 1
+	row.Parent = content
+	
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(0.6, 0, 1, 0)
+	label.BackgroundTransparency = 1
+	label.Text = labelText
+	label.TextColor3 = Color3.fromRGB(255, 255, 255)
+	label.TextSize = 12
+	label.Font = Enum.Font.SourceSansBold
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextWrapped = true
+	label.Parent = row
+	
+	local box = Instance.new("TextBox")
+	box.Size = UDim2.new(0.37, 0, 0, 26)
+	box.AnchorPoint = Vector2.new(1, 0.5)
+	box.Position = UDim2.new(1, 0, 0.5, 0)
+	box.BackgroundColor3 = Color3.fromRGB(40, 0, 0)
+	box.BorderSizePixel = 0
+	box.Text = tostring(settings[key])
+	box.TextColor3 = Color3.fromRGB(255, 255, 255)
+	box.PlaceholderText = "0"
+	box.TextSize = 14
+	box.Font = Enum.Font.SourceSansBold
+	box.ClearTextOnFocus = false
+	box.Parent = row
+	
+	local boxCorner = Instance.new("UICorner")
+	boxCorner.CornerRadius = UDim.new(0, 4)
+	boxCorner.Parent = box
+	
+	local function apply(final)
+		local n = tonumber(box.Text)
+		if n then
+			n = math.clamp(n, minV, maxV)
+			if settings[key] ~= n then
+				settings[key] = n
+				local saved = saveSettings()
+				setStatus(saved and "Saved" or "Applied (can't save, no file access)")
+				if onChange then onChange() end
+			end
+			if final then
+				box.Text = tostring(n)
+			end
+		elseif final then
+			box.Text = tostring(settings[key])
+		end
+	end
+	box:GetPropertyChangedSignal("Text"):Connect(function()
+		apply(false)
+	end)
+	box.FocusLost:Connect(function()
+		apply(true)
+	end)
+end
+
+makeRow(1, "Spawn Ransom every (seconds)  [0 = off]", "ransomEvery", 0, 3600, restartAuto)
+makeRow(2, "CD-1 spawn rate (%)", "cdRate", 0, 100, nil)
+makeRow(3, "TV spawn rate (%)", "tvRate", 0, 100, nil)
+makeRow(4, "Drawer spawn rate (%)", "drawerRate", 0, 100, nil)
+
+-- big button at the bottom
+local spawnBtn = Instance.new("TextButton")
+spawnBtn.Name = "SpawnRansomButton"
+spawnBtn.LayoutOrder = 6
+spawnBtn.Size = UDim2.new(1, 0, 0, 32)
+spawnBtn.BackgroundColor3 = Color3.fromRGB(60, 0, 0)
+spawnBtn.BorderSizePixel = 0
+spawnBtn.Text = "Spawn Ransom"
+spawnBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+spawnBtn.TextSize = 16
+spawnBtn.Font = Enum.Font.SourceSansBold
+spawnBtn.Parent = content
+
+local spawnBtnCorner = Instance.new("UICorner")
+spawnBtnCorner.CornerRadius = UDim.new(0, 4)
+spawnBtnCorner.Parent = spawnBtn
+
+spawnBtn.Activated:Connect(function()
+	if spawnRansom() then
+		setStatus("Ransom is spawning...")
+	else
+		setStatus("Ransom is already running")
+	end
+end)
+
+-- On execute NOTHING spawns: only this window shows. A saved auto-spawn time stays paused until you edit that box.
+if settings.ransomEvery > 0 then
+	statusLabel.Text = "Auto-spawn is paused. Edit the seconds box to start it."
+	task.delay(4, function()
+		if statusLabel.Parent and statusLabel.Text:find("paused") then
+			statusLabel.Text = defaultStatus
+		end
+	end)
+end 
