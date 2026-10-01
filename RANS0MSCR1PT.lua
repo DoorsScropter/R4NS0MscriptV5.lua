@@ -26,8 +26,8 @@ local PRE_CORNER_TIME = 0.5 -- seconds the image stays in the corner
 local PRE_FLASH_TIME = 0.4 -- seconds the flash image + dark red bg stay in the center
 local PRE_GAP_TIME = 0 -- seconds of nothing between the flash and the final stare
 local PRE_STARE_TIME = 0.7 -- seconds the final image stays in the center (with the flickering bg)
-local PRE_CORNER_SIZE = 200 -- size of the corner image (pixels)
-local PRE_CENTER_SIZE = 200 -- size of the center images (pixels)
+local PRE_CORNER_SIZE = 100 -- size of the corner image (pixels)
+local PRE_CENTER_SIZE = 100 -- size of the center images (pixels)
 local PRE_FLICKER_SPEED = 0.1 -- how fast the dark red bg flickers during the final stare
 local PRE_DETECT_IN_FLASH = true -- false = moving only counts during the final stare (when he is at the center), true = also counts during the flash
 
@@ -69,7 +69,7 @@ local CRUCIFIX_SOUND_VOLUME = 6
 
 -- TV SETTINGS
 local TV_ASSET_ID = 17307663311 -- TV model
-local TV_SCALE = 2.5 -- HOW BIG THE TV IS (1 = original size, 2 = twice as big, 3 = three times as big...)
+local TV_SCALE = 1.5 -- HOW BIG THE TV IS (1 = original size, 2 = twice as big, 3 = three times as big...)
 local TV_CHANCE = 0.03 -- chance per spawn (only ONE TV ever spawns per run)
 local TV_ROTATION = CFrame.Angles(0, 0, 0) -- if the TV faces the wrong way, try CFrame.Angles(0, math.rad(90), 0) / (0, math.rad(180), 0) / (0, math.rad(-90), 0)
 local TV_STATIC_SOUND_ID = 138347177735590
