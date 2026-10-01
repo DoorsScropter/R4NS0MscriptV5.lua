@@ -28,7 +28,7 @@ local PRE_GAP_TIME = 0 -- seconds of nothing between the flash and the final sta
 local PRE_STARE_TIME = 0.7 -- seconds the final image stays in the center (with the flickering bg)
 local PRE_CORNER_SIZE = 150 -- size of the corner image (pixels)
 local PRE_CENTER_SIZE = 150 -- size of the center images (pixels)
-local PRE_FLICKER_SPEED = 1 -- how fast the dark red bg flickers during the final stare
+local PRE_FLICKER_SPEED = 50 -- how fast the dark red bg flickers during the final stare
 local PRE_DETECT_IN_FLASH = false -- false = moving only counts during the final stare (when he is at the center), true = also counts during the flash
 
 -- COIN MODEL SETTINGS
