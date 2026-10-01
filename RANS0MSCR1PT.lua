@@ -24,12 +24,12 @@ local PRE_IMAGE_A = 12350997710 -- shows in the top-left corner, then comes back
 local PRE_IMAGE_B = 12440673966 -- the quick flash in the center
 local PRE_CORNER_TIME = 0.5 -- seconds the image stays in the corner
 local PRE_FLASH_TIME = 0.4 -- seconds the flash image + dark red bg stay in the center
-local PRE_GAP_TIME = 0.4 -- seconds of nothing between the flash and the final stare
+local PRE_GAP_TIME = 0 -- seconds of nothing between the flash and the final stare
 local PRE_STARE_TIME = 0.7 -- seconds the final image stays in the center (with the flickering bg)
-local PRE_CORNER_SIZE = 300 -- size of the corner image (pixels)
-local PRE_CENTER_SIZE = 420 -- size of the center images (pixels)
-local PRE_FLICKER_SPEED = 0.06 -- how fast the dark red bg flickers during the final stare
-local PRE_DETECT_IN_FLASH = false -- false = moving only counts during the final stare (when he is at the center), true = also counts during the flash
+local PRE_CORNER_SIZE = 200 -- size of the corner image (pixels)
+local PRE_CENTER_SIZE = 200 -- size of the center images (pixels)
+local PRE_FLICKER_SPEED = 0.1 -- how fast the dark red bg flickers during the final stare
+local PRE_DETECT_IN_FLASH = true -- false = moving only counts during the final stare (when he is at the center), true = also counts during the flash
 
 -- COIN MODEL SETTINGS
 local COIN_ASSET_ID = 130662993839681
