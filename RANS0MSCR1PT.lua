@@ -48,7 +48,7 @@ local CD_GRIP = CFrame.new(0, 0, 0) -- how the CD sits in your hand (only used i
 
 -- CRUCIFIX SETTINGS
 local CRUCIFIX_ASSET_ID = 11650774915 -- the pickup / tool model
-local CRUCIFIX_CHANCE = 0.05 -- 5% chance per spawn cycle
+local CRUCIFIX_CHANCE = 0.02 -- 5% chance per spawn cycle
 local CRUCIFIX_MAX_SPAWNS = 1 -- how many crucifixes can spawn per round (raise it if you want more)
 local CRUCIFIX_TOOL_NAME = "Crucifix"
 local CRUCIFIX_SCALE = 1
@@ -62,8 +62,8 @@ local CRUCIFIX_IMAGE_SIZE = 0.6 -- image size compared to the cross (1 = as big 
 local CRUCIFIX_STAY_TIME = 5 -- seconds before the cross sinks into the ground
 local CRUCIFIX_SINK_TIME = 1.5 -- how long the sinking takes
 local CRUCIFIX_LIGHT_COLOR = Color3.fromRGB(120, 200, 255) -- light blue
-local CRUCIFIX_LIGHT_BRIGHTNESS = 10
-local CRUCIFIX_LIGHT_RANGE = 40
+local CRUCIFIX_LIGHT_BRIGHTNESS = 5
+local CRUCIFIX_LIGHT_RANGE = 28
 local CRUCIFIX_SOUND_ID_1 = 105524657454474 -- both play at the same moment when you use the crucifix
 local CRUCIFIX_SOUND_ID_2 = 115833319186798
 local CRUCIFIX_SOUND_VOLUME = 6
