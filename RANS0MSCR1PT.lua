@@ -27,8 +27,8 @@ local PRE_CORNER_TIME = 0.5 -- seconds the image stays in the corner
 local PRE_FLASH_TIME = 0.4 -- seconds the flash image + dark red bg stay in the center
 local PRE_GAP_TIME = 0 -- seconds of nothing between the flash and the final stare
 local PRE_STARE_TIME = 0.7 -- seconds the final image stays in the center (with the flickering bg)
-local PRE_CORNER_SIZE = 150 -- size of the corner image (pixels)
-local PRE_CENTER_SIZE = 150 -- size of the center images (pixels)
+local PRE_CORNER_SIZE = 200 -- size of the corner image (pixels)
+local PRE_CENTER_SIZE = 200 -- size of the center images (pixels)
 local PRE_FLICKER_SPEED = 50 -- how fast the dark red bg flickers during the final stare
 local PRE_DETECT_IN_FLASH = false -- false = moving only counts during the final stare (when he is at the center), true = also counts during the flash
 
