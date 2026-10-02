@@ -32,6 +32,9 @@ local PRE_CENTER_SIZE = 150 -- size of the center images (pixels)
 local PRE_FLICKER_SPEED = 50 -- how fast the dark red bg flickers during the final stare
 local PRE_DETECT_IN_FLASH = false -- false = moving only counts during the final stare (when he is at the center), true = also counts during the flash
 
+-- INVENTORY LOCK (while the R4NS0M window is active)
+local LOCK_ICON_ID = 12351002086 -- image shown on locked tools in your inventory slots
+
 -- COIN MODEL SETTINGS
 local COIN_ASSET_ID = 130662993839681
 local COIN_SCALE = 1 -- make bigger/smaller (example: 1.5 or 0.7)
@@ -41,14 +44,14 @@ local PICKUP_DISTANCE = 10 -- how close you must be to see the "Collect Coins" /
 
 -- CD-1 TOOL SETTINGS
 local CD_ASSET_ID = 116084743176043
-local CD_CHANCE = 0.01 -- DEFAULT chance per spawn (the config window can change it; only ONE CD spawns per round)
+local CD_CHANCE = 0.01 -- DEFAULT chance per spawn = 1% (the config window can change it; only ONE CD spawns per round)
 local CD_TOOL_NAME = "CD-1"
 local CD_SCALE = 0.4 -- size of the CD (on the ground AND in your hand). 1 = original size
 local CD_GRIP = CFrame.new(0, 0, 0) -- how the CD sits in your hand (only used if the model isn't already a Tool)
 
 -- CRUCIFIX SETTINGS
 local CRUCIFIX_ASSET_ID = 11650774915 -- the pickup / tool model
-local CRUCIFIX_CHANCE = 0.02 -- 5% chance per spawn cycle
+local CRUCIFIX_CHANCE = 0.02 -- DEFAULT chance per spawn cycle = 2% (the config window can change it)
 local CRUCIFIX_MAX_SPAWNS = 1 -- how many crucifixes can spawn per round (raise it if you want more)
 local CRUCIFIX_TOOL_NAME = "Crucifix"
 local CRUCIFIX_SCALE = 1
@@ -71,7 +74,7 @@ local CRUCIFIX_SOUND_VOLUME = 6
 -- TV SETTINGS
 local TV_ASSET_ID = 17307663311 -- TV model
 local TV_SCALE = 1.5 -- HOW BIG THE TV IS (1 = original size, 2 = twice as big, 3 = three times as big...)
-local TV_CHANCE = 0.01 -- DEFAULT chance per spawn (the config window can change it; only ONE TV exists at a time)
+local TV_CHANCE = 0.01 -- DEFAULT chance per spawn = 1% (the config window can change it; only ONE TV exists at a time)
 local TV_ROTATION = CFrame.Angles(0, 0, 0) -- if the TV faces the wrong way, try CFrame.Angles(0, math.rad(90), 0) / (0, math.rad(180), 0) / (0, math.rad(-90), 0)
 local TV_STATIC_SOUND_ID = 138347177735590
 local TV_IDLE_STATIC_VOLUME = 0 -- quiet static while the TV just stands there (0 = silent)
@@ -125,7 +128,7 @@ local NORMAL_CLONE_LIGHT_RANGE = 16
 
 -- DRAWER SETTINGS
 local DRAWER_ASSET_ID = 11213956867
-local DRAWER_CHANCE = 0.10 -- DEFAULT chance per spawn cycle that a drawer spawns instead of a coin (the config window can change it)
+local DRAWER_CHANCE = 0.10 -- DEFAULT chance per spawn cycle that a drawer spawns instead of a coin = 10% (the config window can change it)
 local DRAWER_COIN_CHANCE = 0.5 -- chance that looting a drawer gives you a coin (0.5 = 50%)
 local DRAWER_ROTATION = CFrame.Angles(0, 0, 0) -- if the drawer faces the wrong way, try (0, math.rad(90), 0) / (0, math.rad(180), 0) / (0, math.rad(-90), 0)
 local DRAWER_PERSIST = false -- false = drawers are removed when R4NS0M ends, true = they stay forever like the TV
@@ -155,12 +158,19 @@ local function round2(x)
 	return math.round(x * 10000) / 100
 end
 
-local settings = {
+-- the values "Reset To Default" puts back (percent per spawn cycle)
+local DEFAULTS = {
 	ransomEvery = 0, -- seconds between automatic R4NS0M spawns (0 = off)
-	cdRate = round2(CD_CHANCE), -- percent per spawn cycle
-	tvRate = round2(TV_CHANCE), -- percent per spawn cycle
-	drawerRate = round2(DRAWER_CHANCE), -- percent per spawn cycle
+	cdRate = round2(CD_CHANCE), -- 1
+	tvRate = round2(TV_CHANCE), -- 1
+	crucifixRate = round2(CRUCIFIX_CHANCE), -- 2
+	drawerRate = round2(DRAWER_CHANCE), -- 10
 }
+
+local settings = {}
+for k, v in pairs(DEFAULTS) do
+	settings[k] = v
+end
 
 local HAS_FILES = (typeof(writefile) == "function") and (typeof(readfile) == "function") and (typeof(isfile) == "function")
 
@@ -241,6 +251,114 @@ local function clearRoundObjects()
 		end
 	end
 end
+
+--------------------------------------------------------------------------------
+-- INVENTORY LOCK
+--   while R4NS0M is active every tool EXCEPT the CD-1 and the Crucifix is locked:
+--   it can't be used or equipped, and its inventory slot shows the lock image.
+--   win / crucify  -> everything is unlocked again
+--   fail           -> every tool except the CD-1 and the Crucifix is deleted
+--   (the original look of each tool is stored in attributes on the tool, so it can always be restored)
+--------------------------------------------------------------------------------
+local LOCK_ICON = "rbxthumb://type=Asset&id=" .. tostring(LOCK_ICON_ID) .. "&w=150&h=150"
+local lockConn = nil
+
+local function isAllowedTool(t)
+	return t.Name == CD_TOOL_NAME or t.Name == CRUCIFIX_TOOL_NAME
+end
+
+local function forEachTool(fn)
+	local bp = player:FindFirstChildOfClass("Backpack")
+	local char = player.Character
+	if bp then
+		for _, c in ipairs(bp:GetChildren()) do
+			if c:IsA("Tool") then
+				fn(c, false)
+			end
+		end
+	end
+	if char then
+		for _, c in ipairs(char:GetChildren()) do
+			if c:IsA("Tool") then
+				fn(c, true)
+			end
+		end
+	end
+end
+
+local function lockOne(t)
+	if not t:GetAttribute("R4Locked") then
+		t:SetAttribute("R4Locked", true)
+		t:SetAttribute("R4Tex", t.TextureId)
+		t:SetAttribute("R4Enabled", t.Enabled)
+		t:SetAttribute("R4Tip", t.ToolTip)
+	end
+	if t.Enabled then
+		t.Enabled = false
+	end
+	if t.TextureId ~= LOCK_ICON then
+		t.TextureId = LOCK_ICON
+	end
+	if t.ToolTip ~= "Locked" then
+		t.ToolTip = "Locked"
+	end
+end
+
+local function unlockOne(t)
+	if t:GetAttribute("R4Locked") then
+		t.Enabled = (t:GetAttribute("R4Enabled") ~= false)
+		t.TextureId = t:GetAttribute("R4Tex") or ""
+		t.ToolTip = t:GetAttribute("R4Tip") or ""
+		t:SetAttribute("R4Locked", nil)
+		t:SetAttribute("R4Tex", nil)
+		t:SetAttribute("R4Enabled", nil)
+		t:SetAttribute("R4Tip", nil)
+	end
+end
+
+local function lockTools()
+	if lockConn then return end
+	lockConn = RunService.Heartbeat:Connect(function()
+		local bp = player:FindFirstChildOfClass("Backpack")
+		forEachTool(function(t, inCharacter)
+			if not isAllowedTool(t) then
+				lockOne(t)
+				-- a locked tool can't be held: push it back into the inventory
+				if inCharacter and bp then
+					t.Parent = bp
+				end
+			end
+		end)
+	end)
+end
+
+local function unlockTools()
+	if lockConn then
+		lockConn:Disconnect()
+		lockConn = nil
+	end
+	forEachTool(function(t)
+		unlockOne(t)
+	end)
+end
+
+-- Deletes every tool except the CD-1 and the Crucifix
+local function wipeInventory()
+	if lockConn then
+		lockConn:Disconnect()
+		lockConn = nil
+	end
+	forEachTool(function(t)
+		if not isAllowedTool(t) then
+			t:Destroy()
+		else
+			unlockOne(t)
+		end
+	end)
+end
+
+-- if the script is executed again while tools were still locked, give them back
+unlockTools()
 
 -- Plays a one-shot sound and cleans it up
 local function playOneShot(id, volume)
@@ -1807,6 +1925,9 @@ local function startMainSequence()
 				finalGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 				finalGui.Parent = playerGui
 				
+				-- the R4NS0M window is on screen: every tool except CD-1 and Crucifix gets locked
+				lockTools()
+				
 				-- THEME SONG: only plays while the R4NS0M window is on screen, fitted to 1:30
 				local themeSound = Instance.new("Sound")
 				themeSound.Name = "R4NS0MTheme"
@@ -2156,6 +2277,7 @@ local function startMainSequence()
 						if finalConn then finalConn:Disconnect() end
 						
 						stopTheme() -- the R4NS0M window is going away
+						unlockTools() -- you won: your tools work again
 						clearRoundObjects()
 						
 						local vicSound = Instance.new("Sound")
@@ -2268,6 +2390,7 @@ local function startMainSequence()
 						if finalConn then finalConn:Disconnect() end
 						
 						stopTheme() -- the R4NS0M window is going away
+						wipeInventory() -- you lost: every tool except CD-1 and Crucifix is deleted
 						clearRoundObjects()
 						if finalGui then finalGui:Destroy() end
 						
@@ -2403,6 +2526,7 @@ local function startMainSequence()
 					hasWon = true -- stops the timer, the coin spawner and the pop-up spawner
 					if finalConn then finalConn:Disconnect() end
 					stopTheme()
+					unlockTools() -- crucified: your tools work again
 					clearRoundObjects()
 					
 					local info = TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.In)
@@ -2792,7 +2916,7 @@ local function startMainSequence()
 					return true
 				end
 				
-				-- COIN / CD / CRUCIFIX / TV / DRAWER SPAWNER (the CD / TV / drawer chances come from the config window)
+				-- COIN / CD / CRUCIFIX / TV / DRAWER SPAWNER (all the chances come from the config window)
 				local function spawnDoorsCompatibleCoin()
 					task.spawn(function()
 						local character = player.Character or player.CharacterAdded:Wait()
@@ -2817,7 +2941,7 @@ local function startMainSequence()
 						
 						-- What is this spawn? "coin", "cd" or "crucifix"
 						local kind = "coin"
-						if crucifixSpawnCount < CRUCIFIX_MAX_SPAWNS and crucifixToolTemplate ~= nil and math.random() < CRUCIFIX_CHANCE then
+						if crucifixSpawnCount < CRUCIFIX_MAX_SPAWNS and crucifixToolTemplate ~= nil and math.random() < settings.crucifixRate / 100 then
 							crucifixSpawnCount += 1
 							kind = "crucifix"
 							print("[R4NS0M] A crucifix spawned at " .. tostring(groundPos))
@@ -3092,11 +3216,57 @@ cfgGui.DisplayOrder = 50
 cfgGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 cfgGui.Parent = playerGui
 
+-- makes `target` draggable by `handle`. onClick fires only if you tapped without dragging.
+-- clamp = keep the target on the screen (target must use an Offset-only position and AnchorPoint 0,0)
+local function makeDraggable(handle, target, onClick, clamp)
+	local dragging, moved = false, false
+	local dragStart, origin = nil, nil
+	
+	handle.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging, moved = true, false
+			dragStart = input.Position
+			origin = target.Position
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then
+					dragging = false
+					if not moved and onClick then
+						onClick()
+					end
+				end
+			end)
+		end
+	end)
+	
+	local conn = UserInputService.InputChanged:Connect(function(input)
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+			local d = input.Position - dragStart
+			if d.Magnitude > 6 then
+				moved = true
+			end
+			if moved then
+				local nx = origin.X.Offset + d.X
+				local ny = origin.Y.Offset + d.Y
+				if clamp then
+					local cam = Workspace.CurrentCamera
+					local vp = cam and cam.ViewportSize or Vector2.new(800, 600)
+					nx = math.clamp(nx, 0, math.max(0, vp.X - target.AbsoluteSize.X))
+					ny = math.clamp(ny, 0, math.max(0, vp.Y - target.AbsoluteSize.Y))
+				end
+				target.Position = UDim2.new(origin.X.Scale, nx, origin.Y.Scale, ny)
+			end
+		end
+	end)
+	cfgGui.Destroying:Connect(function()
+		conn:Disconnect()
+	end)
+end
+
 local cfgWindow = Instance.new("Frame")
 cfgWindow.Name = "ConfigWindow"
 cfgWindow.BackgroundColor3 = Color3.fromRGB(60, 0, 0)
 cfgWindow.BorderSizePixel = 0
-cfgWindow.Size = UDim2.new(0, 300, 0, 262)
+cfgWindow.Size = UDim2.new(0, 300, 0, 342)
 cfgWindow.AnchorPoint = Vector2.new(0.5, 0.5)
 cfgWindow.Position = UDim2.new(0.5, 0, 0.5, 0)
 cfgWindow.Parent = cfgGui
@@ -3157,57 +3327,77 @@ local closeCorner = Instance.new("UICorner")
 closeCorner.CornerRadius = UDim.new(0, 3)
 closeCorner.Parent = closeBtn
 
--- small tab that reopens the window after you close it
-local openTab = Instance.new("TextButton")
-openTab.Name = "ConfigOpenTab"
-openTab.Size = UDim2.new(0, 72, 0, 26)
-openTab.AnchorPoint = Vector2.new(0, 0.5)
-openTab.Position = UDim2.new(0, 8, 0.5, 0)
-openTab.BackgroundColor3 = Color3.fromRGB(60, 0, 0)
-openTab.BorderSizePixel = 0
-openTab.Text = "CONFIG"
-openTab.TextColor3 = Color3.fromRGB(255, 255, 255)
-openTab.TextSize = 13
-openTab.Font = Enum.Font.SourceSansBold
-openTab.Visible = false
-openTab.Parent = cfgGui
-
-local openCorner = Instance.new("UICorner")
-openCorner.CornerRadius = UDim.new(0, 5)
-openCorner.Parent = openTab
-
 closeBtn.Activated:Connect(function()
 	cfgWindow.Visible = false
-	openTab.Visible = true
-end)
-openTab.Activated:Connect(function()
-	cfgWindow.Visible = true
-	openTab.Visible = false
 end)
 
 -- drag the window by its white header
-local dragging, dragStart, dragOrigin = false, nil, nil
-cfgHeader.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-		dragging = true
-		dragStart = input.Position
-		dragOrigin = cfgWindow.Position
-		input.Changed:Connect(function()
-			if input.UserInputState == Enum.UserInputState.End then
-				dragging = false
-			end
-		end)
-	end
-end)
-local dragConn = UserInputService.InputChanged:Connect(function(input)
-	if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-		local d = input.Position - dragStart
-		cfgWindow.Position = UDim2.new(dragOrigin.X.Scale, dragOrigin.X.Offset + d.X, dragOrigin.Y.Scale, dragOrigin.Y.Offset + d.Y)
-	end
-end)
-cfgGui.Destroying:Connect(function()
-	dragConn:Disconnect()
-end)
+makeDraggable(cfgHeader, cfgWindow, nil, false)
+
+-- FLOATING CONFIG BUTTON: always on screen, drag it anywhere, tap it to open / close the window
+local camVp = (Workspace.CurrentCamera and Workspace.CurrentCamera.ViewportSize) or Vector2.new(800, 600)
+local cfgButton = Instance.new("TextButton")
+cfgButton.Name = "ConfigButton"
+cfgButton.Size = UDim2.new(0, 104, 0, 34)
+cfgButton.AnchorPoint = Vector2.new(0, 0)
+cfgButton.Position = UDim2.new(0, 10, 0, math.floor(camVp.Y * 0.5 - 17))
+cfgButton.BackgroundColor3 = Color3.fromRGB(110, 0, 0)
+cfgButton.BorderSizePixel = 0
+cfgButton.AutoButtonColor = false
+cfgButton.Text = "R4NS0M"
+cfgButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+cfgButton.TextSize = 15
+cfgButton.Font = Enum.Font.Oswald
+cfgButton.ZIndex = 5
+cfgButton.Parent = cfgGui
+
+local btnCorner = Instance.new("UICorner")
+btnCorner.CornerRadius = UDim.new(1, 0)
+btnCorner.Parent = cfgButton
+
+local btnGradient = Instance.new("UIGradient")
+btnGradient.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 40, 40)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(70, 0, 0)),
+})
+btnGradient.Rotation = 90
+btnGradient.Parent = cfgButton
+
+local btnStroke = Instance.new("UIStroke")
+btnStroke.Color = Color3.fromRGB(255, 70, 70)
+btnStroke.Thickness = 2
+btnStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+btnStroke.Parent = cfgButton
+
+local btnTextStroke = Instance.new("UIStroke")
+btnTextStroke.Color = Color3.fromRGB(0, 0, 0)
+btnTextStroke.Thickness = 1.2
+btnTextStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+btnTextStroke.Parent = cfgButton
+
+-- glowing red pulse around the button
+TweenService:Create(btnStroke, TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+	Color = Color3.fromRGB(255, 190, 190),
+	Thickness = 3.5,
+}):Play()
+
+-- small "tap / drag" hint under the name
+local btnSub = Instance.new("TextLabel")
+btnSub.BackgroundTransparency = 1
+btnSub.Size = UDim2.new(1, 0, 0, 10)
+btnSub.AnchorPoint = Vector2.new(0, 1)
+btnSub.Position = UDim2.new(0, 0, 1, -2)
+btnSub.Text = "CONFIG"
+btnSub.TextColor3 = Color3.fromRGB(255, 210, 210)
+btnSub.TextSize = 8
+btnSub.Font = Enum.Font.SourceSansBold
+btnSub.ZIndex = 6
+btnSub.Parent = cfgButton
+cfgButton.TextYAlignment = Enum.TextYAlignment.Top
+
+makeDraggable(cfgButton, cfgButton, function()
+	cfgWindow.Visible = not cfgWindow.Visible
+end, true)
 
 -- content area
 local content = Instance.new("Frame")
@@ -3233,7 +3423,7 @@ contentList.Parent = content
 local defaultStatus = HAS_FILES and "Changes save instantly" or "Changes apply, but can't be saved (no file access)"
 local statusLabel = Instance.new("TextLabel")
 statusLabel.Name = "Status"
-statusLabel.LayoutOrder = 5
+statusLabel.LayoutOrder = 6
 statusLabel.Size = UDim2.new(1, 0, 0, 14)
 statusLabel.BackgroundTransparency = 1
 statusLabel.Text = defaultStatus
@@ -3276,6 +3466,7 @@ local function restartAuto()
 end
 
 -- one row: label on the left, number box on the right
+local rowBoxes = {}
 local function makeRow(order, labelText, key, minV, maxV, onChange)
 	local row = Instance.new("Frame")
 	row.LayoutOrder = order
@@ -3312,6 +3503,8 @@ local function makeRow(order, labelText, key, minV, maxV, onChange)
 	boxCorner.CornerRadius = UDim.new(0, 4)
 	boxCorner.Parent = box
 	
+	rowBoxes[key] = box
+	
 	local function apply(final)
 		local n = tonumber(box.Text)
 		if n then
@@ -3340,12 +3533,42 @@ end
 makeRow(1, "Spawn Ransom every (seconds)  [0 = off]", "ransomEvery", 0, 3600, restartAuto)
 makeRow(2, "CD-1 spawn rate (%)", "cdRate", 0, 100, nil)
 makeRow(3, "TV spawn rate (%)", "tvRate", 0, 100, nil)
-makeRow(4, "Drawer spawn rate (%)", "drawerRate", 0, 100, nil)
+makeRow(4, "Crucifix spawn rate (%)", "crucifixRate", 0, 100, nil)
+makeRow(5, "Drawer spawn rate (%)", "drawerRate", 0, 100, nil)
+
+-- RESET TO DEFAULT button
+local resetBtn = Instance.new("TextButton")
+resetBtn.Name = "ResetButton"
+resetBtn.LayoutOrder = 7
+resetBtn.Size = UDim2.new(1, 0, 0, 30)
+resetBtn.BackgroundColor3 = Color3.fromRGB(90, 0, 0)
+resetBtn.BorderSizePixel = 0
+resetBtn.Text = "Reset To Default"
+resetBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+resetBtn.TextSize = 14
+resetBtn.Font = Enum.Font.SourceSansBold
+resetBtn.Parent = content
+
+local resetCorner = Instance.new("UICorner")
+resetCorner.CornerRadius = UDim.new(0, 4)
+resetCorner.Parent = resetBtn
+
+resetBtn.Activated:Connect(function()
+	for k, v in pairs(DEFAULTS) do
+		settings[k] = v
+		if rowBoxes[k] then
+			rowBoxes[k].Text = tostring(v)
+		end
+	end
+	local saved = saveSettings()
+	setStatus(saved and "Reset to default" or "Reset (can't save, no file access)")
+	restartAuto()
+end)
 
 -- big button at the bottom
 local spawnBtn = Instance.new("TextButton")
 spawnBtn.Name = "SpawnRansomButton"
-spawnBtn.LayoutOrder = 6
+spawnBtn.LayoutOrder = 8
 spawnBtn.Size = UDim2.new(1, 0, 0, 32)
 spawnBtn.BackgroundColor3 = Color3.fromRGB(60, 0, 0)
 spawnBtn.BorderSizePixel = 0
@@ -3375,4 +3598,4 @@ if settings.ransomEvery > 0 then
 			statusLabel.Text = defaultStatus
 		end
 	end)
-end 
+end
