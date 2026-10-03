@@ -34,14 +34,14 @@ local PRE_DETECT_IN_FLASH = false -- false = moving only counts during the final
 local PRE_RANDOM_SIDE_CHANCE = 0.6 -- chance the first image spawns on a random side instead of the top-left (0 = always top-left, 1 = always random)
 
 -- DOWNLOADING SCREEN (the "Downloading..." text + loading bar)
-local DOWNLOAD_BLOCKS = 10 -- how many blocks the loading bar has (the total speed stays the same)
+local DOWNLOAD_BLOCKS = 7 -- how many blocks the loading bar has (the total speed stays the same)
 local DOWNLOAD_TEXT_OUTLINE = Color3.fromRGB(90, 0, 0) -- dark red outline around the "Downloading" text
 local DOWNLOAD_TEXT_OUTLINE_SIZE = 3 -- thickness of the text outline
 local DOWNLOAD_BAR_OUTLINE = Color3.fromRGB(140, 0, 0) -- red outline around the loading bar
 local DOWNLOAD_BAR_OUTLINE_SIZE = 3 -- thickness of the bar outline
 
 -- VIGNETTE + SCREEN SHAKE (while the R4NS0M window is active)
-local VIGNETTE_SIZE = 0.08 -- how far the red edges reach inward (smaller = shorter)
+local VIGNETTE_SIZE = 0.02 -- how far the red edges reach inward (smaller = shorter)
 local VIGNETTE_PULSE_START = 30 -- seconds left when it starts pulsing
 local VIGNETTE_PULSE_TIME = 0.5 -- seconds for each fade in / fade out
 local VIGNETTE_RED = Color3.fromRGB(255, 0, 0)
