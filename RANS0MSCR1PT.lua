@@ -1,8 +1,4 @@
--- DOORS Compatible GUI + Spawn Sound + Fixed Movement Detection
--- R4NS0M Title + Custom Pop-up Names + Shaking Popups
--- + R4NS0M teleports (6/7/8s) | random pre-corner image spot
--- + 4-sided red fading vignette (pulses at <=30s) | mild screen shake | green-out on win
-
+-- DOORS Compatible GUI + Spawn Sound + Fixed Movement Detection (R4NS0M Title + Custom Pop-up Names + Shaking Popups)
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
@@ -25,7 +21,7 @@ local THEME_VOLUME = 10 -- loud
 local THEME_EXTEND_JUMPSCARE = false -- true = after the jumpscare audio ends, the FIRST HALF of the theme is cloned in to extend the music
 
 -- "STAND STILL" WARNING (the corner image -> center images, before the jumpscare)
-local PRE_IMAGE_A = 12350997710 -- shows in the top-left corner, then comes back to the center
+local PRE_IMAGE_A = 12350997710 -- shows in a corner / side of the screen, then comes back to the center
 local PRE_IMAGE_B = 12440673966 -- the quick flash in the center
 local PRE_CORNER_TIME = 0.5 -- seconds the image stays in the corner
 local PRE_FLASH_TIME = 0.4 -- seconds the flash image + dark red bg stay in the center
@@ -35,23 +31,25 @@ local PRE_CORNER_SIZE = 150 -- size of the corner image (pixels)
 local PRE_CENTER_SIZE = 150 -- size of the center images (pixels)
 local PRE_FLICKER_SPEED = 50 -- how fast the dark red bg flickers during the final stare
 local PRE_DETECT_IN_FLASH = false -- false = moving only counts during the final stare (when he is at the center), true = also counts during the flash
-local PRE_CORNER_RANDOM_CHANCE = 0.5 -- chance the corner image spawns on a RANDOM side instead of top-left (0 = always top-left, 1 = always random)
+local PRE_RANDOM_SIDE_CHANCE = 0.6 -- chance the first image spawns on a random side instead of the top-left (0 = always top-left, 1 = always random)
 
--- R4NS0M MAIN WINDOW: TELEPORT + SHAKE
-local RANSOM_TP_MIN = 6 -- minimum seconds between teleports
-local RANSOM_TP_MAX = 8 -- maximum seconds between teleports (so it picks 6, 7 or 8 randomly)
-local RANSOM_SHAKE = 1 -- how many pixels he jitters while shaking in place
-local SCREEN_SHAKE = 0.08 -- mild whole-screen shake strength (studs of camera offset)
+-- DOWNLOADING SCREEN (the "Downloading..." text + loading bar)
+local DOWNLOAD_BLOCKS = 10 -- how many blocks the loading bar has (the total speed stays the same)
+local DOWNLOAD_TEXT_OUTLINE = Color3.fromRGB(90, 0, 0) -- dark red outline around the "Downloading" text
+local DOWNLOAD_TEXT_OUTLINE_SIZE = 3 -- thickness of the text outline
+local DOWNLOAD_BAR_OUTLINE = Color3.fromRGB(140, 0, 0) -- red outline around the loading bar
+local DOWNLOAD_BAR_OUTLINE_SIZE = 3 -- thickness of the bar outline
 
--- VIGNETTE (4-sided red fading border that shows while R4NS0M is active)
-local VIGNETTE_COLOR = Color3.fromRGB(255, 0, 0) -- red
-local VIGNETTE_MAX = 0.35 -- how strong the vignette gets (0 = invisible, 1 = solid)
-local VIGNETTE_THICKNESS = 90 -- thickness of each edge frame in pixels (smaller = "shorter" effect)
-local VIGNETTE_FADE_IN = 0.25 -- seconds for the vignette to fade in (short)
-local VIGNETTE_PULSE_AT = 30 -- when the timer reaches this many seconds left...
-local VIGNETTE_PULSE_TIME = 0.5 -- ...the vignette fades out/in every this many seconds
-local VIGNETTE_WIN_COLOR = Color3.fromRGB(0, 255, 60) -- green when you win
-local VIGNETTE_WIN_FADE = 0.8 -- seconds for the green fade-out on win
+-- VIGNETTE + SCREEN SHAKE (while the R4NS0M window is active)
+local VIGNETTE_SIZE = 0.08 -- how far the red edges reach inward (smaller = shorter)
+local VIGNETTE_PULSE_START = 30 -- seconds left when it starts pulsing
+local VIGNETTE_PULSE_TIME = 0.5 -- seconds for each fade in / fade out
+local VIGNETTE_RED = Color3.fromRGB(255, 0, 0)
+local VIGNETTE_GREEN = Color3.fromRGB(0, 255, 60)
+local SHAKE_AMOUNT = 0.0015 -- really mild camera shake (raise it for more)
+
+-- INVENTORY LOCK (while the R4NS0M window is active)
+local LOCK_ICON_ID = 12351002086 -- image shown on locked tools in your inventory slots
 
 -- COIN MODEL SETTINGS
 local COIN_ASSET_ID = 130662993839681
@@ -62,14 +60,14 @@ local PICKUP_DISTANCE = 10 -- how close you must be to see the "Collect Coins" /
 
 -- CD-1 TOOL SETTINGS
 local CD_ASSET_ID = 116084743176043
-local CD_CHANCE = 0.01 -- DEFAULT chance per spawn (the config window can change it; only ONE CD spawns per round)
+local CD_CHANCE = 0.01 -- DEFAULT chance per spawn = 1% (the config window can change it; only ONE CD spawns per round)
 local CD_TOOL_NAME = "CD-1"
 local CD_SCALE = 0.4 -- size of the CD (on the ground AND in your hand). 1 = original size
 local CD_GRIP = CFrame.new(0, 0, 0) -- how the CD sits in your hand (only used if the model isn't already a Tool)
 
 -- CRUCIFIX SETTINGS
 local CRUCIFIX_ASSET_ID = 11650774915 -- the pickup / tool model
-local CRUCIFIX_CHANCE = 0.02 -- 2% chance per spawn cycle
+local CRUCIFIX_CHANCE = 0.02 -- DEFAULT chance per spawn cycle = 2% (the config window can change it)
 local CRUCIFIX_MAX_SPAWNS = 1 -- how many crucifixes can spawn per round (raise it if you want more)
 local CRUCIFIX_TOOL_NAME = "Crucifix"
 local CRUCIFIX_SCALE = 1
@@ -92,7 +90,7 @@ local CRUCIFIX_SOUND_VOLUME = 6
 -- TV SETTINGS
 local TV_ASSET_ID = 17307663311 -- TV model
 local TV_SCALE = 1.5 -- HOW BIG THE TV IS (1 = original size, 2 = twice as big, 3 = three times as big...)
-local TV_CHANCE = 0.01 -- DEFAULT chance per spawn (the config window can change it; only ONE TV exists at a time)
+local TV_CHANCE = 0.01 -- DEFAULT chance per spawn = 1% (the config window can change it; only ONE TV exists at a time)
 local TV_ROTATION = CFrame.Angles(0, 0, 0) -- if the TV faces the wrong way, try CFrame.Angles(0, math.rad(90), 0) / (0, math.rad(180), 0) / (0, math.rad(-90), 0)
 local TV_STATIC_SOUND_ID = 138347177735590
 local TV_IDLE_STATIC_VOLUME = 0 -- quiet static while the TV just stands there (0 = silent)
@@ -146,7 +144,7 @@ local NORMAL_CLONE_LIGHT_RANGE = 16
 
 -- DRAWER SETTINGS
 local DRAWER_ASSET_ID = 11213956867
-local DRAWER_CHANCE = 0.10 -- DEFAULT chance per spawn cycle that a drawer spawns instead of a coin (the config window can change it)
+local DRAWER_CHANCE = 0.10 -- DEFAULT chance per spawn cycle that a drawer spawns instead of a coin = 10% (the config window can change it)
 local DRAWER_COIN_CHANCE = 0.5 -- chance that looting a drawer gives you a coin (0.5 = 50%)
 local DRAWER_ROTATION = CFrame.Angles(0, 0, 0) -- if the drawer faces the wrong way, try (0, math.rad(90), 0) / (0, math.rad(180), 0) / (0, math.rad(-90), 0)
 local DRAWER_PERSIST = false -- false = drawers are removed when R4NS0M ends, true = they stay forever like the TV
@@ -176,12 +174,19 @@ local function round2(x)
 	return math.round(x * 10000) / 100
 end
 
-local settings = {
+-- the values "Reset To Default" puts back (percent per spawn cycle)
+local DEFAULTS = {
 	ransomEvery = 0, -- seconds between automatic R4NS0M spawns (0 = off)
-	cdRate = round2(CD_CHANCE), -- percent per spawn cycle
-	tvRate = round2(TV_CHANCE), -- percent per spawn cycle
-	drawerRate = round2(DRAWER_CHANCE), -- percent per spawn cycle
+	cdRate = round2(CD_CHANCE), -- 1
+	tvRate = round2(TV_CHANCE), -- 1
+	crucifixRate = round2(CRUCIFIX_CHANCE), -- 2
+	drawerRate = round2(DRAWER_CHANCE), -- 10
 }
+
+local settings = {}
+for k, v in pairs(DEFAULTS) do
+	settings[k] = v
+end
 
 local HAS_FILES = (typeof(writefile) == "function") and (typeof(readfile) == "function") and (typeof(isfile) == "function")
 
@@ -227,9 +232,6 @@ end
 if playerGui:FindFirstChild("R4NS0MConfigGui") then
 	playerGui.R4NS0MConfigGui:Destroy()
 end
-if playerGui:FindFirstChild("R4NS0MVignette") then
-	playerGui.R4NS0MVignette:Destroy()
-end
 if SoundService:FindFirstChild("JumpscareSound") then
 	SoundService.JumpscareSound:Destroy()
 end
@@ -265,6 +267,207 @@ local function clearRoundObjects()
 		end
 	end
 end
+
+--------------------------------------------------------------------------------
+-- INVENTORY LOCK
+--   while R4NS0M is active every tool EXCEPT the CD-1 and the Crucifix is locked:
+--   it can't be used or equipped, and its inventory slot shows the lock image.
+--   win / crucify  -> everything is unlocked again
+--   fail           -> every tool except the CD-1 and the Crucifix is deleted
+--   (the original look of each tool is stored in attributes on the tool, so it can always be restored)
+--------------------------------------------------------------------------------
+local LOCK_ICON = "rbxthumb://type=Asset&id=" .. tostring(LOCK_ICON_ID) .. "&w=150&h=150"
+local lockConn = nil
+
+local function isAllowedTool(t)
+	return t.Name == CD_TOOL_NAME or t.Name == CRUCIFIX_TOOL_NAME
+end
+
+local function forEachTool(fn)
+	local bp = player:FindFirstChildOfClass("Backpack")
+	local char = player.Character
+	if bp then
+		for _, c in ipairs(bp:GetChildren()) do
+			if c:IsA("Tool") then
+				fn(c, false)
+			end
+		end
+	end
+	if char then
+		for _, c in ipairs(char:GetChildren()) do
+			if c:IsA("Tool") then
+				fn(c, true)
+			end
+		end
+	end
+end
+
+local function lockOne(t)
+	if not t:GetAttribute("R4Locked") then
+		t:SetAttribute("R4Locked", true)
+		t:SetAttribute("R4Tex", t.TextureId)
+		t:SetAttribute("R4Enabled", t.Enabled)
+		t:SetAttribute("R4Tip", t.ToolTip)
+	end
+	if t.Enabled then
+		t.Enabled = false
+	end
+	if t.TextureId ~= LOCK_ICON then
+		t.TextureId = LOCK_ICON
+	end
+	if t.ToolTip ~= "Locked" then
+		t.ToolTip = "Locked"
+	end
+end
+
+local function unlockOne(t)
+	if t:GetAttribute("R4Locked") then
+		t.Enabled = (t:GetAttribute("R4Enabled") ~= false)
+		t.TextureId = t:GetAttribute("R4Tex") or ""
+		t.ToolTip = t:GetAttribute("R4Tip") or ""
+		t:SetAttribute("R4Locked", nil)
+		t:SetAttribute("R4Tex", nil)
+		t:SetAttribute("R4Enabled", nil)
+		t:SetAttribute("R4Tip", nil)
+	end
+end
+
+local function lockTools()
+	if lockConn then return end
+	lockConn = RunService.Heartbeat:Connect(function()
+		local bp = player:FindFirstChildOfClass("Backpack")
+		forEachTool(function(t, inCharacter)
+			if not isAllowedTool(t) then
+				lockOne(t)
+				-- a locked tool can't be held: push it back into the inventory
+				if inCharacter and bp then
+					t.Parent = bp
+				end
+			end
+		end)
+	end)
+end
+
+local function unlockTools()
+	if lockConn then
+		lockConn:Disconnect()
+		lockConn = nil
+	end
+	forEachTool(function(t)
+		unlockOne(t)
+	end)
+end
+
+-- Deletes every tool except the CD-1 and the Crucifix
+local function wipeInventory()
+	if lockConn then
+		lockConn:Disconnect()
+		lockConn = nil
+	end
+	forEachTool(function(t)
+		if not isAllowedTool(t) then
+			t:Destroy()
+		else
+			unlockOne(t)
+		end
+	end)
+end
+
+-- if the script is executed again while tools were still locked, give them back
+unlockTools()
+
+--------------------------------------------------------------------------------
+-- VIGNETTE (4 separate edge frames with inwards-facing gradients) + MILD SCREEN SHAKE
+--   shown while the R4NS0M window is active, pulses in the last 30 seconds, turns green when you win
+--------------------------------------------------------------------------------
+if playerGui:FindFirstChild("R4NS0MVignetteGui") then
+	playerGui.R4NS0MVignetteGui:Destroy()
+end
+
+local vignetteGui, vignetteFrames = nil, {}
+
+local function setVignetteAlpha(a)
+	for _, f in ipairs(vignetteFrames) do
+		f.BackgroundTransparency = 1 - a
+	end
+end
+
+local function setVignetteColor(c)
+	for _, f in ipairs(vignetteFrames) do
+		f.BackgroundColor3 = c
+	end
+end
+
+local function destroyVignette()
+	if vignetteGui then vignetteGui:Destroy() end
+	vignetteGui, vignetteFrames = nil, {}
+end
+
+local function fadeVignetteOut(t)
+	local gui, frames = vignetteGui, vignetteFrames
+	vignetteGui, vignetteFrames = nil, {}
+	if not gui then return end
+	for _, f in ipairs(frames) do
+		TweenService:Create(f, TweenInfo.new(t), {BackgroundTransparency = 1}):Play()
+	end
+	task.delay(t + 0.1, function() gui:Destroy() end)
+end
+
+-- 4 separate edge frames, each with a gradient that fades inwards
+local function showVignette(color)
+	destroyVignette()
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "R4NS0MVignetteGui"
+	gui.IgnoreGuiInset = true
+	gui.ResetOnSpawn = false
+	gui.DisplayOrder = 5
+	gui.Parent = playerGui
+	vignetteGui = gui
+	
+	local function edge(pos, size, anchor, rot)
+		local f = Instance.new("Frame")
+		f.BackgroundColor3 = color
+		f.BorderSizePixel = 0
+		f.Position = pos
+		f.Size = size
+		f.AnchorPoint = anchor
+		f.Parent = gui
+		local g = Instance.new("UIGradient")
+		g.Rotation = rot
+		g.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.15),
+			NumberSequenceKeypoint.new(1, 1),
+		})
+		g.Parent = f
+		table.insert(vignetteFrames, f)
+	end
+	edge(UDim2.new(0, 0, 0, 0), UDim2.new(1, 0, VIGNETTE_SIZE, 0), Vector2.new(0, 0), 90) -- top
+	edge(UDim2.new(0, 0, 1, 0), UDim2.new(1, 0, VIGNETTE_SIZE, 0), Vector2.new(0, 1), 270) -- bottom
+	edge(UDim2.new(0, 0, 0, 0), UDim2.new(VIGNETTE_SIZE, 0, 1, 0), Vector2.new(0, 0), 0) -- left
+	edge(UDim2.new(1, 0, 0, 0), UDim2.new(VIGNETTE_SIZE, 0, 1, 0), Vector2.new(1, 0), 180) -- right
+	setVignetteAlpha(1) -- instantly visible
+end
+
+-- mild screen shake
+local function startShake()
+	RunService:UnbindFromRenderStep("R4NS0MShake")
+	RunService:BindToRenderStep("R4NS0MShake", Enum.RenderPriority.Camera.Value + 1, function()
+		local cam = Workspace.CurrentCamera
+		if cam then
+			local r = SHAKE_AMOUNT
+			cam.CFrame = cam.CFrame
+				* CFrame.new((math.random() - 0.5) * 0.04, (math.random() - 0.5) * 0.04, 0)
+				* CFrame.Angles((math.random() - 0.5) * r * 2, (math.random() - 0.5) * r * 2, 0)
+		end
+	end)
+end
+
+local function stopShake()
+	pcall(function()
+		RunService:UnbindFromRenderStep("R4NS0MShake")
+	end)
+end
+stopShake()
 
 -- Plays a one-shot sound and cleans it up
 local function playOneShot(id, volume)
@@ -422,16 +625,16 @@ end
 
 local function buildToolFromAsset(loaded, toolName, grip, scale)
 	local source = loaded:Clone()
-
+	
 	-- Strip scripts so the asset can't run anything
 	for _, d in ipairs(source:GetDescendants()) do
 		if d:IsA("Script") or d:IsA("LocalScript") then
 			d:Destroy()
 		end
 	end
-
+	
 	local tool
-
+	
 	if source:IsA("Tool") and source:FindFirstChild("Handle") then
 		-- The asset is already a proper tool
 		tool = source
@@ -450,7 +653,7 @@ local function buildToolFromAsset(loaded, toolName, grip, scale)
 		if #parts == 0 then
 			error(toolName .. " asset has no parts")
 		end
-
+		
 		-- Pick the handle: PrimaryPart if there is one, otherwise the biggest part
 		local handle = nil
 		if source:IsA("Model") and source.PrimaryPart then
@@ -466,11 +669,11 @@ local function buildToolFromAsset(loaded, toolName, grip, scale)
 				end
 			end
 		end
-
+		
 		tool = Instance.new("Tool")
 		tool.RequiresHandle = true
 		tool.Grip = grip
-
+		
 		for _, p in ipairs(parts) do
 			p.Anchored = false
 			p.CanCollide = false
@@ -482,20 +685,20 @@ local function buildToolFromAsset(loaded, toolName, grip, scale)
 				weld.Parent = p
 			end
 		end
-
+		
 		handle.Name = "Handle"
 		for _, p in ipairs(parts) do
 			p.Parent = tool
 		end
 	end
-
+	
 	tool.Name = toolName
 	tool.ToolTip = toolName
 	tool.CanBeDropped = false
-
+	
 	-- Resize (affects both the ground version and the one in your hand)
 	scaleInstance(tool, scale)
-
+	
 	return tool
 end
 
@@ -528,12 +731,12 @@ end)
 local function makeToolDisplay(template)
 	local model = Instance.new("Model")
 	model.Name = "MapCollectibleCoin" -- same name as coins so cleanup removes it too
-
+	
 	local clone = template:Clone()
 	for _, child in ipairs(clone:GetChildren()) do
 		child.Parent = model
 	end
-
+	
 	for _, d in ipairs(model:GetDescendants()) do
 		if d:IsA("BasePart") then
 			d.Anchored = true
@@ -542,7 +745,7 @@ local function makeToolDisplay(template)
 			d.CanQuery = false
 		end
 	end
-
+	
 	return model
 end
 
@@ -686,21 +889,21 @@ local WHITE = Color3.fromRGB(255, 255, 255)
 local function makeAvatarClone(evil)
 	local char = player.Character
 	if not char then return nil end
-
+	
 	char.Archivable = true
 	local okClone, clone = pcall(function()
 		return char:Clone()
 	end)
 	if not okClone or not clone then return nil end
 	clone.Name = evil and "R4NS0M_EvilClone" or "R4NS0M_Clone"
-
+	
 	-- Remove anything that could run, make noise, or show name tags
 	for _, d in ipairs(clone:GetDescendants()) do
 		if d:IsA("LuaSourceContainer") or d:IsA("Sound") or d:IsA("BillboardGui") or d:IsA("ForceField") or d:IsA("Tool") then
 			d:Destroy()
 		end
 	end
-
+	
 	-- Both versions: strip clothes / face so the clone can be one solid neon color
 	for _, d in ipairs(clone:GetDescendants()) do
 		if d:IsA("Shirt") or d:IsA("Pants") or d:IsA("ShirtGraphic") or d:IsA("BodyColors")
@@ -708,9 +911,9 @@ local function makeAvatarClone(evil)
 			d:Destroy()
 		end
 	end
-
+	
 	local tintColor = evil and RED or WHITE
-
+	
 	for _, d in ipairs(clone:GetDescendants()) do
 		if d:IsA("BasePart") then
 			d.Anchored = false
@@ -731,7 +934,7 @@ local function makeAvatarClone(evil)
 			end)
 		end
 	end
-
+	
 	-- Only the root is anchored; the rest follows it and can still animate
 	local hrp = clone:FindFirstChild("HumanoidRootPart")
 	if not hrp then
@@ -739,7 +942,7 @@ local function makeAvatarClone(evil)
 		return nil
 	end
 	hrp.Anchored = true
-
+	
 	local hum = clone:FindFirstChildOfClass("Humanoid")
 	if hum then
 		pcall(function()
@@ -755,7 +958,7 @@ local function makeAvatarClone(evil)
 			hum.EvaluateStateMachine = false
 		end)
 	end
-
+	
 	local torso = clone:FindFirstChild("UpperTorso") or clone:FindFirstChild("Torso")
 	if torso then
 		local light = Instance.new("PointLight")
@@ -770,7 +973,7 @@ local function makeAvatarClone(evil)
 		end
 		light.Parent = torso
 	end
-
+	
 	return clone
 end
 
@@ -778,7 +981,7 @@ end
 local function attachEvilBillboard(clone)
 	local torso = clone:FindFirstChild("UpperTorso") or clone:FindFirstChild("Torso")
 	if not torso then return nil, nil end
-
+	
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "EvilImage"
 	gui.Adornee = torso
@@ -787,7 +990,7 @@ local function attachEvilBillboard(clone)
 	gui.Size = UDim2.new(4, 0, 4, 0)
 	gui.Enabled = false
 	gui.Parent = torso
-
+	
 	local img = Instance.new("ImageLabel")
 	img.Name = "Image"
 	img.BackgroundTransparency = 1
@@ -796,7 +999,7 @@ local function attachEvilBillboard(clone)
 	img.Size = UDim2.new(1, 0, 1, 0)
 	img.Image = "rbxthumb://type=Asset&id=" .. tostring(EVIL_IMAGE_ID) .. "&w=420&h=420"
 	img.Parent = gui
-
+	
 	return gui, img
 end
 
@@ -829,7 +1032,7 @@ local function runCloneEntity(evil, tvModel, tvGroundY, onEmerged, onGone)
 		if onGone then task.spawn(onGone) end
 		return nil
 	end
-
+	
 	local clone = makeAvatarClone(evil)
 	if not clone then
 		warn("Couldn't clone your character.")
@@ -837,13 +1040,13 @@ local function runCloneEntity(evil, tvModel, tvGroundY, onEmerged, onGone)
 		return nil
 	end
 	local cHrp = clone:FindFirstChild("HumanoidRootPart")
-
+	
 	-- How high the root sits above the ground
 	local hipOffset = 3
 	if ownerHum.RigType == Enum.HumanoidRigType.R15 then
 		hipOffset = ownerHum.HipHeight + ownerHrp.Size.Y / 2
 	end
-
+	
 	-- Where it comes out of the TV
 	local tvCF, tvSize = tvModel:GetBoundingBox()
 	local tvCenter = tvCF.Position
@@ -852,7 +1055,7 @@ local function runCloneEntity(evil, tvModel, tvGroundY, onEmerged, onGone)
 	local emergeDist = math.max(tvSize.X, tvSize.Z) / 2 + 3.5
 	local startPos = Vector3.new(tvCenter.X, tvGroundY + hipOffset, tvCenter.Z)
 	local endPos = startPos + dir * emergeDist
-
+	
 	-- Start invisible, fade in while walking out
 	local fadeList = {}
 	for _, d in ipairs(clone:GetDescendants()) do
@@ -861,21 +1064,21 @@ local function runCloneEntity(evil, tvModel, tvGroundY, onEmerged, onGone)
 			d.Transparency = 1
 		end
 	end
-
+	
 	local motorPairs = buildMotorPairs(ownerChar, clone)
 	local billboard, billboardImg = nil, nil
 	if evil then
 		billboard, billboardImg = attachEvilBillboard(clone)
 	end
-
+	
 	clone.Parent = Workspace
 	cHrp.CFrame = CFrame.lookAt(startPos, startPos + dir)
-
+	
 	local rayParams = RaycastParams.new()
 	rayParams.FilterType = Enum.RaycastFilterType.Exclude
 	rayParams.IgnoreWater = true
 	rayParams.FilterDescendantsInstances = {ownerChar, clone, tvModel}
-
+	
 	local speed = evil and EVIL_CLONE_SPEED or CLONE_SPEED
 	local state = "emerge"
 	local elapsed = 0
@@ -886,12 +1089,12 @@ local function runCloneEntity(evil, tvModel, tvGroundY, onEmerged, onGone)
 	local glitchTimer = 0
 	local finished = false
 	local conn
-
+	
 	-- Recording (normal clone only) so it can rewind
 	local hist = {}
 	local rewindCb = nil
 	local rewindIdx = 0
-
+	
 	local function record(a)
 		local poses = {}
 		for k, m in ipairs(motorPairs) do
@@ -906,7 +1109,7 @@ local function runCloneEntity(evil, tvModel, tvGroundY, onEmerged, onGone)
 			hist = thinned
 		end
 	end
-
+	
 	local function finish()
 		if finished then return end
 		finished = true
@@ -918,7 +1121,7 @@ local function runCloneEntity(evil, tvModel, tvGroundY, onEmerged, onGone)
 			task.spawn(onGone)
 		end
 	end
-
+	
 	local ctl = {}
 	function ctl.IsReady()
 		return (not finished) and (not evil) and state == "chase"
@@ -932,7 +1135,7 @@ local function runCloneEntity(evil, tvModel, tvGroundY, onEmerged, onGone)
 		state = "rewind"
 		return true
 	end
-
+	
 	local function copyPose()
 		for _, m in ipairs(motorPairs) do
 			if m.src.Parent and m.clone.Parent then
@@ -940,10 +1143,10 @@ local function runCloneEntity(evil, tvModel, tvGroundY, onEmerged, onGone)
 			end
 		end
 	end
-
+	
 	conn = RunService.RenderStepped:Connect(function(dt)
 		if finished then return end
-
+		
 		local char = player.Character
 		local pHrp = char and char:FindFirstChild("HumanoidRootPart")
 		local pHum = char and char:FindFirstChildOfClass("Humanoid")
@@ -951,12 +1154,12 @@ local function runCloneEntity(evil, tvModel, tvGroundY, onEmerged, onGone)
 			finish()
 			return
 		end
-
+		
 		-- Copy your movements / animations (frozen while the evil clone is stopped, replaced while rewinding)
 		if not stopped and state ~= "rewind" then
 			copyPose()
 		end
-
+		
 		---------------- REWIND: walks backwards into the TV and disappears ----------------
 		if state == "rewind" then
 			local n = #hist
@@ -979,7 +1182,7 @@ local function runCloneEntity(evil, tvModel, tvGroundY, onEmerged, onGone)
 			end
 			return
 		end
-
+		
 		---------------- COMING OUT OF THE TV ----------------
 		if state == "emerge" then
 			elapsed += dt
@@ -1001,12 +1204,12 @@ local function runCloneEntity(evil, tvModel, tvGroundY, onEmerged, onGone)
 			end
 			return
 		end
-
+		
 		---------------- CHASING ----------------
 		local cPos = cHrp.Position
 		local toP = Vector3.new(pHrp.Position.X - cPos.X, 0, pHrp.Position.Z - cPos.Z)
 		local flatDist = toP.Magnitude
-
+		
 		-- Evil clone: moves for a while, then stops for a moment
 		if evil then
 			phaseTimer += dt
@@ -1023,7 +1226,7 @@ local function runCloneEntity(evil, tvModel, tvGroundY, onEmerged, onGone)
 				glitchTimer = 1
 			end
 		end
-
+		
 		if not stopped then
 			if flatDist > 0.05 then
 				facing = toP.Unit
@@ -1031,14 +1234,14 @@ local function runCloneEntity(evil, tvModel, tvGroundY, onEmerged, onGone)
 			local step = math.min(speed * dt, flatDist)
 			local newX = cPos.X + facing.X * step
 			local newZ = cPos.Z + facing.Z * step
-
+			
 			local hit = Workspace:Raycast(Vector3.new(newX, curY + 4, newZ), Vector3.new(0, -25, 0), rayParams)
 			local targetY = hit and (hit.Position.Y + hipOffset) or curY
 			curY = curY + (targetY - curY) * math.min(1, dt * 12)
-
+			
 			local newPos = Vector3.new(newX, curY, newZ)
 			cHrp.CFrame = CFrame.lookAt(newPos, newPos + facing)
-
+			
 			-- Images flickering through the body while it moves
 			if billboardImg then
 				glitchTimer += dt
@@ -1049,11 +1252,11 @@ local function runCloneEntity(evil, tvModel, tvGroundY, onEmerged, onGone)
 				end
 			end
 		end
-
+		
 		if not evil then
 			record(1)
 		end
-
+		
 		-- Touch = instant death
 		local dx = pHrp.Position.X - cHrp.Position.X
 		local dz = pHrp.Position.Z - cHrp.Position.Z
@@ -1063,7 +1266,7 @@ local function runCloneEntity(evil, tvModel, tvGroundY, onEmerged, onGone)
 			finish()
 		end
 	end)
-
+	
 	return ctl
 end
 
@@ -1077,9 +1280,9 @@ local function setupTV(tv, groundY)
 		tv:Destroy()
 		return
 	end
-
+	
 	local screenPart = findScreenPart(tv)
-
+	
 	-- Static sound
 	local staticSound = Instance.new("Sound")
 	staticSound.Name = "TVStatic"
@@ -1088,7 +1291,7 @@ local function setupTV(tv, groundY)
 	staticSound.Volume = TV_IDLE_STATIC_VOLUME
 	staticSound.RollOffMaxDistance = 45
 	staticSound.Parent = main
-
+	
 	local function setStatic(vol)
 		if vol <= 0 then
 			staticSound:Stop()
@@ -1100,7 +1303,7 @@ local function setupTV(tv, groundY)
 		end
 	end
 	setStatic(TV_IDLE_STATIC_VOLUME)
-
+	
 	-- Prompt
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.Name = "TVPrompt"
@@ -1111,12 +1314,12 @@ local function setupTV(tv, groundY)
 	prompt.RequiresLineOfSight = false
 	prompt.KeyboardKeyCode = Enum.KeyCode.E
 	prompt.Parent = main
-
+	
 	-- "idle" = nothing happening, "busy" = something in progress, "normal" = normal clone is out and chasing
 	local phase = "idle"
 	local normalCtl = nil
 	local restoreTV = nil
-
+	
 	local function doRestoreTV()
 		if restoreTV then
 			local r = restoreTV
@@ -1124,7 +1327,7 @@ local function setupTV(tv, groundY)
 			r()
 		end
 	end
-
+	
 	local function holdingCD()
 		local char = player.Character
 		local t = char and char:FindFirstChild(CD_TOOL_NAME)
@@ -1133,7 +1336,7 @@ local function setupTV(tv, groundY)
 		end
 		return nil
 	end
-
+	
 	-- Prompt text + availability:
 	--   idle: always usable ("Open TV?" or "Insert Disc?" if you hold the CD)
 	--   normal clone out: ONLY usable with the CD ("Insert Disc?" -> rewind)
@@ -1154,13 +1357,13 @@ local function setupTV(tv, groundY)
 			prompt.Enabled = canUse
 		end
 	end)
-
+	
 	local function cycleDone()
 		phase = "idle"
 		normalCtl = nil
 		setStatic(TV_IDLE_STATIC_VOLUME)
 	end
-
+	
 	----------------------------------------------------------------
 	-- RED GLOW + PARTICLES (start when you insert the disc)
 	-- Only the TV SCREEN glows red (like the white screen glow when the normal clone comes out), not the whole TV
@@ -1172,19 +1375,19 @@ local function setupTV(tv, groundY)
 	local glowLight = nil
 	local glowBillboard = nil
 	local glowSize = Vector3.new(4, 4, 4)
-
+	
 	local function startGlow()
 		if glowCenter then return end
 		doRestoreTV() -- drop the white screen glow if it's still on
-
+		
 		-- only the screen of the TV turns red + neon
 		if screenPart then
 			glowRestore = tintModel(screenPart, TV_GLOW_COLOR)
 		end
-
+		
 		local cf, size = tv:GetBoundingBox()
 		glowSize = size
-
+		
 		-- invisible part in the exact center of the TV (moves with the TV while it shakes)
 		glowCenter = Instance.new("Part")
 		glowCenter.Name = "TVCenter"
@@ -1196,7 +1399,7 @@ local function setupTV(tv, groundY)
 		glowCenter.CanQuery = false
 		glowCenter.CFrame = cf
 		glowCenter.Parent = tv
-
+		
 		-- red light that comes from the screen (the same way the white light does when you open the TV)
 		glowLight = Instance.new("PointLight")
 		glowLight.Color = TV_GLOW_LIGHT_COLOR
@@ -1204,7 +1407,7 @@ local function setupTV(tv, groundY)
 		glowLight.Range = TV_GLOW_RANGE
 		glowLight.Shadows = false
 		glowLight.Parent = screenPart or glowCenter
-
+		
 		-- particles coming out of the center of the TV
 		glowEmitter = Instance.new("ParticleEmitter")
 		glowEmitter.Name = "TVParticles"
@@ -1227,11 +1430,11 @@ local function setupTV(tv, groundY)
 		glowEmitter.RotSpeed = NumberRange.new(-90, 90)
 		glowEmitter.Parent = glowCenter
 	end
-
+	
 	local function showCenterImage()
 		if not glowCenter or glowBillboard then return end
 		local s = math.max(glowSize.X, glowSize.Y) * TV_CENTER_IMAGE_SIZE
-
+		
 		local gui = Instance.new("BillboardGui")
 		gui.Name = "TVCenterImage"
 		gui.Adornee = glowCenter
@@ -1240,7 +1443,7 @@ local function setupTV(tv, groundY)
 		gui.Size = UDim2.new(s, 0, s, 0)
 		gui.Parent = glowCenter
 		glowBillboard = gui
-
+		
 		local img = Instance.new("ImageLabel")
 		img.BackgroundTransparency = 1
 		img.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -1248,7 +1451,7 @@ local function setupTV(tv, groundY)
 		img.Size = UDim2.new(1, 0, 1, 0)
 		img.Image = "rbxthumb://type=Asset&id=" .. tostring(TV_CENTER_IMAGE_ID) .. "&w=420&h=420"
 		img.Parent = gui
-
+		
 		-- the image shakes / glitches like the TV is getting corrupted (stops when the glow is removed)
 		task.spawn(function()
 			while glowBillboard == gui and gui.Parent do
@@ -1259,7 +1462,7 @@ local function setupTV(tv, groundY)
 			end
 		end)
 	end
-
+	
 	local function stopGlow()
 		if glowEmitter then
 			glowEmitter.Enabled = false
@@ -1277,7 +1480,7 @@ local function setupTV(tv, groundY)
 		end
 		glowCenter, glowEmitter, glowLight, glowBillboard = nil, nil, nil, nil
 	end
-
+	
 	-- INSERT DISC:
 	--   sound 1 plays 1s -> sound 2 plays 7s while the TV shakes (normal clone rewinds into the TV if it's out)
 	--   -> sound 3 plays with the shaking image -> after it ends the EVIL clone comes out (TV standing still)
@@ -1289,7 +1492,7 @@ local function setupTV(tv, groundY)
 		task.spawn(function()
 			setStatic(TV_ACTIVE_STATIC_VOLUME)
 			startGlow()
-
+			
 			local rewound = true
 			if ctl then
 				rewound = false
@@ -1301,10 +1504,10 @@ local function setupTV(tv, groundY)
 					rewound = true
 				end
 			end
-
+			
 			-- 1) first sound, 1 second
 			playTimed(TV_INSERT_SOUND_1, TV_INSERT_SOUND_VOLUME, TV_INSERT_SOUND_1_TIME)
-
+			
 			-- 2) second sound, 7 seconds straight, the TV shakes the whole time
 			local soundTwo = makeSound(TV_INSERT_SOUND_2, TV_INSERT_SOUND_VOLUME)
 			soundTwo:Play()
@@ -1322,30 +1525,30 @@ local function setupTV(tv, groundY)
 			if tv.Parent then
 				tv:PivotTo(base)
 			end
-
+			
 			-- Make sure the normal clone is fully gone before the evil one comes
 			local waited = os.clock()
 			while not rewound and os.clock() - waited < 10 do
 				RunService.Heartbeat:Wait()
 			end
-
+			
 			-- 3) third sound, the image shows in the center and shakes
 			setStatic(0)
 			showCenterImage()
 			playUntilEnd(TV_INSERT_SOUND_3, TV_INSERT_SOUND_VOLUME, TV_INSERT_SOUND_3_MAX_WAIT)
-
+			
 			if not tv.Parent then
 				cycleDone()
 				return
 			end
-
+			
 			-- 4) a moment after the sound ends, the evil clone comes out
 			task.wait(TV_EVIL_DELAY)
 			if not tv.Parent then
 				cycleDone()
 				return
 			end
-
+			
 			if not TV_GLOW_STAY_AFTER then
 				stopGlow()
 			end
@@ -1357,7 +1560,7 @@ local function setupTV(tv, groundY)
 			end)
 		end)
 	end
-
+	
 	-- OPEN TV: the screen turns on (white glow + white light + static) for a few seconds, then a clone of you comes out
 	local function openTV()
 		phase = "busy"
@@ -1370,14 +1573,14 @@ local function setupTV(tv, groundY)
 			openLight.Range = TV_OPEN_LIGHT_RANGE
 			openLight.Shadows = false
 			openLight.Parent = screenPart or main
-
+			
 			restoreTV = function()
 				openLight:Destroy()
 				tintUndo()
 			end
-
+			
 			setStatic(TV_ACTIVE_STATIC_VOLUME)
-
+			
 			-- power-on flicker
 			local flickerTime = 0
 			for i = 1, 6 do
@@ -1387,14 +1590,14 @@ local function setupTV(tv, groundY)
 				flickerTime += 0.08
 			end
 			openLight.Brightness = TV_OPEN_LIGHT_BRIGHTNESS
-
+			
 			task.wait(math.max(0, TV_OPEN_DELAY - flickerTime))
-
+			
 			if not tv.Parent then
 				cycleDone()
 				return
 			end
-
+			
 			normalCtl = runCloneEntity(false, tv, groundY, function()
 				phase = "normal"
 				if not TV_STAY_WHITE then
@@ -1408,11 +1611,11 @@ local function setupTV(tv, groundY)
 			end)
 		end)
 	end
-
+	
 	prompt.Triggered:Connect(function(plr)
 		if plr ~= player then return end
 		local cdTool = holdingCD()
-
+		
 		if phase == "idle" then
 			if cdTool then
 				insertDisc(cdTool, nil)
@@ -1423,7 +1626,7 @@ local function setupTV(tv, groundY)
 			insertDisc(cdTool, normalCtl)
 		end
 	end)
-
+	
 	----------------------------------------------------------------
 	-- PUSHING THE TV
 	--   walk into the side of the TV -> you stick to it
@@ -1451,11 +1654,11 @@ local function setupTV(tv, groundY)
 				end
 			end
 		end
-
+		
 		if #tvParts > 0 then
 			local extSize = extMax - extMin
 			local extMid = (extMin + extMax) / 2
-
+			
 			local useZ = (TV_PUSH_AXIS == "Z")
 			local axisUnit = useZ and Vector3.new(0, 0, 1) or Vector3.new(1, 0, 0)
 			local function across(v)
@@ -1466,7 +1669,7 @@ local function setupTV(tv, groundY)
 			end
 			local minAcross, maxAcross = across(extMin), across(extMax)
 			local minAlong, maxAlong = along(extMin), along(extMax)
-
+			
 			-- returns 1 / -1 if you are next to one of the pushable sides (within dist), 0 if not
 			local function sideContact(worldPos, dist)
 				local rel = tv:GetPivot():PointToObjectSpace(worldPos)
@@ -1477,7 +1680,7 @@ local function setupTV(tv, groundY)
 				if a < minAcross and minAcross - a <= dist then return -1 end
 				return 0
 			end
-
+			
 			-- stops the TV from being dragged through walls / drawers
 			local overlap = OverlapParams.new()
 			overlap.FilterType = Enum.RaycastFilterType.Exclude
@@ -1495,13 +1698,13 @@ local function setupTV(tv, groundY)
 				end
 				return false
 			end
-
+			
 			local pushing = false
 			local needExit = false
 			local jumpFlag = false
 			local offset = Vector3.new(0, 0, 0)
 			local baseY = 0
-
+			
 			local function attach(hrp, sign)
 				local pivot = tv:GetPivot()
 				local off = pivot:PointToObjectSpace(hrp.Position)
@@ -1521,7 +1724,7 @@ local function setupTV(tv, groundY)
 					end
 				end
 			end
-
+			
 			local function detach()
 				if not pushing then return end
 				pushing = false
@@ -1532,11 +1735,11 @@ local function setupTV(tv, groundY)
 					end
 				end
 			end
-
+			
 			local jumpConn = UserInputService.JumpRequest:Connect(function()
 				jumpFlag = true
 			end)
-
+			
 			local pushConn
 			pushConn = RunService.Heartbeat:Connect(function()
 				if not tv.Parent then
@@ -1544,39 +1747,39 @@ local function setupTV(tv, groundY)
 					jumpConn:Disconnect()
 					return
 				end
-
+				
 				local char = player.Character
 				local hrp = char and char:FindFirstChild("HumanoidRootPart")
 				local hum = char and char:FindFirstChildOfClass("Humanoid")
 				local jumped = jumpFlag
 				jumpFlag = false
-
+				
 				-- dead / something is happening with the TV: let go
 				if not hrp or not hum or hum.Health <= 0 or phase ~= "idle" then
 					detach()
 					return
 				end
-
+				
 				---------------- HOLDING THE TV ----------------
 				if pushing then
 					if jumped or hum:GetState() == Enum.HumanoidStateType.Jumping then
 						detach()
 						return
 					end
-
+					
 					local pivot = tv:GetPivot()
 					local rot = pivot - pivot.Position
 					local want = hrp.Position - rot:VectorToWorldSpace(offset)
 					want = Vector3.new(want.X, baseY, want.Z)
 					local cur = pivot.Position
 					local delta = want - cur
-
+					
 					if delta.Magnitude > 3 then
 						-- the TV can't keep up (blocked) or you got teleported: let go
 						detach()
 						return
 					end
-
+					
 					if delta.Magnitude > 0.002 then
 						local function cfAt(pos)
 							return CFrame.new(pos) * rot
@@ -1596,7 +1799,7 @@ local function setupTV(tv, groundY)
 					end
 					return
 				end
-
+				
 				---------------- NOT HOLDING ----------------
 				if needExit then
 					if sideContact(hrp.Position, TV_PUSH_TOUCH_DISTANCE * 2.5) == 0 then
@@ -1604,7 +1807,7 @@ local function setupTV(tv, groundY)
 					end
 					return
 				end
-
+				
 				local sign = sideContact(hrp.Position, TV_PUSH_TOUCH_DISTANCE)
 				if sign ~= 0 and not jumped then
 					-- you must be walking INTO the side to grab it
@@ -1621,27 +1824,27 @@ end
 -- Places the TV on the ground (facing you) and sets it up. It is NOT named like coins, so it never gets cleaned up.
 local function spawnTV(groundPos, playerPos)
 	if not tvTemplate then return end
-
+	
 	local tv = tvTemplate:Clone()
 	tv.Name = "R4NS0M_TV"
-
+	
 	-- make the TV as big as TV_SCALE says
 	if TV_SCALE ~= 1 then
 		pcall(function()
 			tv:ScaleTo(TV_SCALE)
 		end)
 	end
-
+	
 	local look = Vector3.new(playerPos.X - groundPos.X, 0, playerPos.Z - groundPos.Z)
 	local faceCF = CFrame.new(groundPos)
 	if look.Magnitude > 0.1 then
 		faceCF = CFrame.lookAt(groundPos, groundPos + look)
 	end
 	tv:PivotTo(faceCF * TV_ROTATION)
-
+	
 	local cf, size = tv:GetBoundingBox()
 	tv:PivotTo(tv:GetPivot() + Vector3.new(0, groundPos.Y - (cf.Position.Y - size.Y / 2), 0))
-
+	
 	tv.Parent = Workspace
 	setupTV(tv, groundPos.Y)
 	print("[R4NS0M] A TV spawned at " .. tostring(groundPos))
@@ -1658,10 +1861,10 @@ local roundActive = false -- true from the moment R4NS0M spawns until it ends
 local function startMainSequence()
 	if mainSequenceTriggered then return end
 	mainSequenceTriggered = true
-
+	
 	if preGui then preGui:Destroy() end
 	if spawnSound then spawnSound:Destroy() end
-
+	
 	local sound = Instance.new("Sound")
 	sound.Name = "JumpscareSound"
 	sound.SoundId = "rbxassetid://" .. tostring(JUMPSCARE_SOUND_ID)
@@ -1703,21 +1906,21 @@ local function startMainSequence()
 	local connection
 	connection = RunService.RenderStepped:Connect(function(dt)
 		elapsed += dt
-
+		
 		if math.random(1, 3) == 1 then
 			phase1Bg.BackgroundColor3 = Color3.fromRGB(math.random(150, 255), 0, 0)
 		end
-
+		
 		if elapsed >= phase1Duration then
 			connection:Disconnect()
 			phase1Bg:Destroy()
 			return
 		end
-
+		
 		local offsetX = math.random(-shakeIntensity, shakeIntensity)
 		local offsetY = math.random(-shakeIntensity, shakeIntensity)
 		imageLabel.Position = originalPosition + UDim2.new(0, offsetX, 0, offsetY)
-
+		
 		if math.floor(elapsed * 40) % 2 == 0 then
 			imageLabel.ImageColor3 = Color3.fromRGB(255, 255, 255)
 		else
@@ -1726,7 +1929,7 @@ local function startMainSequence()
 	end)
 
 	----------------------------------------------------------------------------
-	-- PHASE 2
+	-- PHASE 2 (downloading text with a dark red outline + 10 block loading bar with a red outline)
 	----------------------------------------------------------------------------
 	task.delay(phase1Duration, function()
 		local bgFrame = Instance.new("Frame")
@@ -1735,7 +1938,7 @@ local function startMainSequence()
 		bgFrame.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
 		bgFrame.BorderSizePixel = 0
 		bgFrame.Parent = screenGui
-
+		
 		local textLabel = Instance.new("TextLabel")
 		textLabel.Name = "DownloadingText"
 		textLabel.Size = UDim2.new(0, 500, 0, 80)
@@ -1745,13 +1948,20 @@ local function startMainSequence()
 		textLabel.Text = "Downloading."
 		textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 		textLabel.TextScaled = true
-
+		
 		local successFont, fontResult = pcall(function()
 			return Enum.Font.Oswald
 		end)
 		textLabel.Font = successFont and fontResult or Enum.Font.SourceSansBold
 		textLabel.Parent = bgFrame
-
+		
+		-- dark red outline around the text
+		local textStroke = Instance.new("UIStroke")
+		textStroke.Color = DOWNLOAD_TEXT_OUTLINE
+		textStroke.Thickness = DOWNLOAD_TEXT_OUTLINE_SIZE
+		textStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+		textStroke.Parent = textLabel
+		
 		local barContainer = Instance.new("Frame")
 		barContainer.Name = "LoadingBarContainer"
 		barContainer.Size = UDim2.new(0, 480, 0, 36)
@@ -1761,41 +1971,51 @@ local function startMainSequence()
 		barContainer.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
 		barContainer.BorderSizePixel = 0
 		barContainer.Parent = bgFrame
-
+		
+		-- red outline around the bar
+		local barStroke = Instance.new("UIStroke")
+		barStroke.Color = DOWNLOAD_BAR_OUTLINE
+		barStroke.Thickness = DOWNLOAD_BAR_OUTLINE_SIZE
+		barStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		barStroke.Parent = barContainer
+		
+		local blockGap = 4
+		local blockWidth = math.floor((480 - 16 - (DOWNLOAD_BLOCKS - 1) * blockGap) / DOWNLOAD_BLOCKS)
+		
 		local uiList = Instance.new("UIListLayout")
 		uiList.FillDirection = Enum.FillDirection.Horizontal
 		uiList.HorizontalAlignment = Enum.HorizontalAlignment.Center
 		uiList.VerticalAlignment = Enum.VerticalAlignment.Center
-		uiList.Padding = UDim.new(0, 8)
+		uiList.Padding = UDim.new(0, blockGap)
 		uiList.Parent = barContainer
-
+		
 		local blocks = {}
-		for i = 1, 5 do
+		for i = 1, DOWNLOAD_BLOCKS do
 			local block = Instance.new("Frame")
 			block.Name = "Block_" .. i
-			block.Size = UDim2.new(0, 84, 0, 22)
+			block.Size = UDim2.new(0, blockWidth, 0, 22)
 			block.BackgroundColor3 = Color3.fromRGB(100, 0, 0)
 			block.BorderSizePixel = 0
 			block.Parent = barContainer
 			table.insert(blocks, block)
 		end
-
+		
 		local originalTextPos = textLabel.Position
 		local originalBarPos = barContainer.Position
 		local phase2Elapsed = 0
-		local totalPhase2Duration = 1.2
+		local totalPhase2Duration = 1.2 -- same speed as before, only the number of blocks changed
 		local textConn
-
+		
 		textConn = RunService.RenderStepped:Connect(function(dt)
 			phase2Elapsed += dt
-
+			
 			if math.random(1, 3) == 1 then
 				bgFrame.BackgroundColor3 = Color3.fromRGB(math.random(150, 255), 0, 0)
 			end
-
+			
 			local progress = math.clamp(phase2Elapsed / totalPhase2Duration, 0, 1)
-
-			local activeBlocksCount = math.ceil(progress * 5)
+			
+			local activeBlocksCount = math.ceil(progress * DOWNLOAD_BLOCKS)
 			for index, block in ipairs(blocks) do
 				if index <= activeBlocksCount then
 					block.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
@@ -1803,12 +2023,12 @@ local function startMainSequence()
 					block.BackgroundColor3 = Color3.fromRGB(100, 0, 0)
 				end
 			end
-
+			
 			-- Finish Phase 2 and trigger Phase 3
 			if progress >= 1 then
 				textConn:Disconnect()
 				if screenGui then screenGui:Destroy() end
-
+				
 				-- The jumpscare audio is NOT cut off: it keeps playing until it ends by itself
 				if sound then
 					if sound.IsPlaying then
@@ -1820,7 +2040,7 @@ local function startMainSequence()
 						sound:Destroy()
 					end
 				end
-
+				
 				--------------------------------------------------------------------
 				-- PHASE 3
 				--------------------------------------------------------------------
@@ -1830,148 +2050,14 @@ local function startMainSequence()
 				finalGui.ResetOnSpawn = false
 				finalGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 				finalGui.Parent = playerGui
-
-				----------------------------------------------------------------
-				-- VIGNETTE (4-sided red fading border) + mild screen shake
-				--   shows instantly while R4NS0M is active
-				--   when the timer reaches VIGNETTE_PULSE_AT (30s) it fades out/in every VIGNETTE_PULSE_TIME (0.5s)
-				--   turns green + fades out when you win
-				----------------------------------------------------------------
-				local vigGui = Instance.new("ScreenGui")
-				vigGui.Name = "R4NS0MVignette"
-				vigGui.IgnoreGuiInset = true
-				vigGui.ResetOnSpawn = false
-				vigGui.DisplayOrder = 5
-				vigGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-				vigGui.Parent = playerGui
-
-				local vigFrames = {}
-
-				local function makeVigEdge(name, size, position, rotation)
-					local f = Instance.new("Frame")
-					f.Name = name
-					f.BackgroundColor3 = VIGNETTE_COLOR
-					f.BackgroundTransparency = 1
-					f.BorderSizePixel = 0
-					f.Size = size
-					f.Position = position
-					f.ZIndex = 3
-					f.Parent = vigGui
-					local g = Instance.new("UIGradient")
-					g.Rotation = rotation
-					g.Transparency = NumberSequence.new({
-						NumberSequenceKeypoint.new(0, 0),
-						NumberSequenceKeypoint.new(1, 1),
-					})
-					g.Parent = f
-					table.insert(vigFrames, f)
-					return f
-				end
-
-				-- top (opaque at the top, fades down) / bottom (opaque at the bottom, fades up)
-				makeVigEdge("VigTop", UDim2.new(1, 0, 0, VIGNETTE_THICKNESS), UDim2.new(0, 0, 0, 0), 90)
-				makeVigEdge("VigBottom", UDim2.new(1, 0, 0, VIGNETTE_THICKNESS), UDim2.new(0, 0, 1, 0), -90)
-				-- left (opaque at the left, fades right) / right (opaque at the right, fades left)
-				makeVigEdge("VigLeft", UDim2.new(0, VIGNETTE_THICKNESS, 1, 0), UDim2.new(0, 0, 0, 0), 0)
-				makeVigEdge("VigRight", UDim2.new(0, VIGNETTE_THICKNESS, 1, 0), UDim2.new(1, 0, 0, 0), 180)
-
-				-- fades every edge frame to a target transparency
-				local function vigSet(targetTransparency, time)
-					for _, f in ipairs(vigFrames) do
-						if f.Parent then
-							TweenService:Create(f, TweenInfo.new(time, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-								BackgroundTransparency = targetTransparency,
-							}):Play()
-						end
-					end
-				end
-
-				-- 1 = fully visible (scaled by VIGNETTE_MAX), 0 = hidden
-				local vigShownAlpha = 1 - VIGNETTE_MAX
-
-				local function showVignette()
-					vigSet(vigShownAlpha, VIGNETTE_FADE_IN)
-				end
-
-				-- pulse: fade in / out every VIGNETTE_PULSE_TIME
-				local pulsing = false
-				local function startPulse()
-					if pulsing then return end
-					pulsing = true
-					task.spawn(function()
-						while pulsing and vigGui.Parent do
-							vigSet(vigShownAlpha, VIGNETTE_PULSE_TIME * 0.5)
-							task.wait(VIGNETTE_PULSE_TIME)
-							if not pulsing then break end
-							vigSet(1, VIGNETTE_PULSE_TIME * 0.5)
-							task.wait(VIGNETTE_PULSE_TIME)
-						end
-					end)
-				end
-				local function stopPulse()
-					if not pulsing then return end
-					pulsing = false
-					vigSet(vigShownAlpha, VIGNETTE_FADE_IN) -- back to steady visible
-				end
-
-				-- mild whole-screen shake (camera offset), while R4NS0M is active
-				local shakeConn
-				local shakeActive = true
-				shakeConn = RunService.RenderStepped:Connect(function()
-					if not shakeActive then return end
-					local char = player.Character
-					local hum = char and char:FindFirstChildOfClass("Humanoid")
-					if hum then
-						hum.CameraOffset = Vector3.new((math.random() - 0.5) * 2 * SCREEN_SHAKE, (math.random() - 0.5) * 2 * SCREEN_SHAKE, 0)
-					end
-				end)
-
-				-- stops the shake + resets the camera offset
-				local function stopScreenShake()
-					shakeActive = false
-					local char = player.Character
-					local hum = char and char:FindFirstChildOfClass("Humanoid")
-					if hum then
-						hum.CameraOffset = Vector3.new(0, 0, 0)
-					end
-					if shakeConn then
-						shakeConn:Disconnect()
-						shakeConn = nil
-					end
-				end
-
-				-- removes the vignette immediately (used on fail / crucified)
-				local function removeVignette()
-					stopPulse()
-					stopScreenShake()
-					if vigGui then
-						vigGui:Destroy()
-					end
-				end
-
-				-- WIN: the vignette turns GREEN and fades out
-				local function greenOutVignette()
-					pulsing = false
-					stopScreenShake()
-					for _, f in ipairs(vigFrames) do
-						f.BackgroundColor3 = VIGNETTE_WIN_COLOR
-						f.BackgroundTransparency = vigShownAlpha
-					end
-					for _, f in ipairs(vigFrames) do
-						TweenService:Create(f, TweenInfo.new(VIGNETTE_WIN_FADE, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-							BackgroundTransparency = 1,
-						}):Play()
-					end
-					task.delay(VIGNETTE_WIN_FADE + 0.1, function()
-						if vigGui then
-							vigGui:Destroy()
-						end
-					end)
-				end
-
-				-- show it instantly when the round starts
-				showVignette()
-
+				
+				-- the R4NS0M window is on screen: every tool except CD-1 and Crucifix gets locked
+				lockTools()
+				
+				-- red vignette appears instantly + mild screen shake
+				showVignette(VIGNETTE_RED)
+				startShake()
+				
 				-- THEME SONG: only plays while the R4NS0M window is on screen, fitted to 1:30
 				local themeSound = Instance.new("Sound")
 				themeSound.Name = "R4NS0MTheme"
@@ -1981,12 +2067,13 @@ local function startMainSequence()
 				themeSound.Looped = true
 				themeSound.Parent = SoundService
 				themeSound:Play()
-
+				
 				local themeExt = nil
-
+				
 				-- Called every time the round ends (win / fail / crucified): stops the theme and frees the round
 				local function stopTheme()
 					roundActive = false
+					stopShake()
 					if themeSound then
 						themeSound:Stop()
 						themeSound:Destroy()
@@ -1998,7 +2085,7 @@ local function startMainSequence()
 						themeExt = nil
 					end
 				end
-
+				
 				-- Fit the theme to THEME_TARGET_SECONDS (90s = 1:30) once its length is known
 				task.spawn(function()
 					local ref = themeSound
@@ -2011,7 +2098,7 @@ local function startMainSequence()
 						ref.Looped = false
 					end
 				end)
-
+				
 				-- EXTENSION: after the jumpscare audio ends, a clone of the FIRST HALF of the theme plays
 				if THEME_EXTEND_JUMPSCARE then
 					task.spawn(function()
@@ -2020,7 +2107,7 @@ local function startMainSequence()
 							task.wait(0.1)
 						end
 						if not themeSound then return end -- the R4NS0M window is already gone
-
+						
 						local ext = Instance.new("Sound")
 						ext.Name = "R4NS0MThemeExtension"
 						ext.SoundId = "rbxassetid://" .. tostring(THEME_SOUND_ID)
@@ -2030,7 +2117,7 @@ local function startMainSequence()
 						ext.Parent = SoundService
 						themeExt = ext
 						ext:Play()
-
+						
 						local l0 = os.clock()
 						while ext.Parent and ext.TimeLength == 0 and os.clock() - l0 < 5 do
 							task.wait(0.1)
@@ -2048,13 +2135,13 @@ local function startMainSequence()
 						end
 					end)
 				end
-
+				
 				local backgroundPopups = {}
-
+				
 				-- Declared early so delayed pop-ups can check them
 				local hasFailed = false
 				local hasWon = false
-
+				
 				local randomAssetList = {
 					"17665445431",
 					"17297286789",
@@ -2064,7 +2151,7 @@ local function startMainSequence()
 					"3128134660",
 					"5490671314"
 				}
-
+				
 				local titleOptions = {
 					"F0UND Y0U",
 					"RANSOM",
@@ -2075,7 +2162,7 @@ local function startMainSequence()
 					"RANNSOM",
 					"ENCRYPTION"
 				}
-
+				
 				local function getRandomWindowSize()
 					local shapeType = math.random(1, 3)
 					if shapeType == 1 then
@@ -2087,15 +2174,15 @@ local function startMainSequence()
 						return UDim2.new(0, math.random(230, 310), 0, math.random(170, 230) + 22)
 					end
 				end
-
+				
 				-- 1. SPAWN THE POP-UP WINDOWS (one at a time, with a pop-in animation)
 				for i = 1, POPUP_COUNT do
 					task.delay((i - 1) * POPUP_DELAY, function()
 						if not finalGui or not finalGui.Parent or hasFailed or hasWon then return end
-
+						
 						local chosenAsset = randomAssetList[math.random(1, #randomAssetList)]
 						local windowSize = getRandomWindowSize()
-
+						
 						local popWindow = Instance.new("Frame")
 						popWindow.Name = "VirusWindow_" .. i
 						popWindow.BackgroundColor3 = Color3.fromRGB(60, 0, 0)
@@ -2106,11 +2193,11 @@ local function startMainSequence()
 						popWindow.ClipsDescendants = true
 						popWindow.ZIndex = 1
 						popWindow.Parent = finalGui
-
+						
 						local corner = Instance.new("UICorner")
 						corner.CornerRadius = UDim.new(0, 5)
 						corner.Parent = popWindow
-
+						
 						local innerContainer = Instance.new("Frame")
 						innerContainer.Name = "InnerContainer"
 						innerContainer.Size = UDim2.new(1, -4, 1, -4)
@@ -2118,11 +2205,11 @@ local function startMainSequence()
 						innerContainer.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
 						innerContainer.BorderSizePixel = 0
 						innerContainer.Parent = popWindow
-
+						
 						local innerCorner = Instance.new("UICorner")
 						innerCorner.CornerRadius = UDim.new(0, 4)
 						innerCorner.Parent = innerContainer
-
+						
 						local headerBar = Instance.new("Frame")
 						headerBar.Name = "HeaderBar"
 						headerBar.Size = UDim2.new(1, 0, 0, 22)
@@ -2130,11 +2217,11 @@ local function startMainSequence()
 						headerBar.BackgroundTransparency = 0
 						headerBar.BorderSizePixel = 0
 						headerBar.Parent = innerContainer
-
+						
 						local headerCorner = Instance.new("UICorner")
 						headerCorner.CornerRadius = UDim.new(0, 4)
 						headerCorner.Parent = headerBar
-
+						
 						local headerText = Instance.new("TextLabel")
 						headerText.Name = "HeaderTitle"
 						headerText.Size = UDim2.new(1, -12, 1, 0)
@@ -2146,7 +2233,7 @@ local function startMainSequence()
 						headerText.Font = Enum.Font.SourceSansBold
 						headerText.TextXAlignment = Enum.TextXAlignment.Left
 						headerText.Parent = headerBar
-
+						
 						local popImg = Instance.new("ImageLabel")
 						popImg.Name = "PopupImage"
 						popImg.Image = "rbxthumb://type=Asset&id=" .. chosenAsset .. "&w=420&h=420"
@@ -2154,7 +2241,7 @@ local function startMainSequence()
 						popImg.Size = UDim2.new(1, 0, 1, -22)
 						popImg.Position = UDim2.new(0, 0, 0, 22)
 						popImg.Parent = innerContainer
-
+						
 						-- RED FLICKER overlay (covers only THIS window while it flickers)
 						local flicker = Instance.new("Frame")
 						flicker.Name = "FlickerOverlay"
@@ -2164,21 +2251,21 @@ local function startMainSequence()
 						flicker.Visible = false
 						flicker.ZIndex = 5
 						flicker.Parent = popWindow
-
+						
 						local flickerCorner = Instance.new("UICorner")
 						flickerCorner.CornerRadius = UDim.new(0, 5)
 						flickerCorner.Parent = flicker
-
+						
 						local flickerImg = Instance.new("ImageLabel")
 						flickerImg.BackgroundTransparency = 1
 						flickerImg.Size = UDim2.new(1, 0, 1, 0)
 						flickerImg.Image = "rbxthumb://type=Asset&id=" .. tostring(POPUP_FLICKER_IMAGE_ID) .. "&w=420&h=420"
 						flickerImg.ZIndex = 6
 						flickerImg.Parent = flicker
-
+						
 						local popInfo = TweenInfo.new(POPUP_POP_TIME, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 						TweenService:Create(popWindow, popInfo, {Size = windowSize}):Play()
-
+						
 						table.insert(backgroundPopups, {
 							Object = popWindow,
 							BasePosition = popWindow.Position,
@@ -2192,7 +2279,7 @@ local function startMainSequence()
 						})
 					end)
 				end
-
+				
 				--------------------------------------------------------------------
 				-- 2. MAIN WINDOW (R4NS0M)
 				--------------------------------------------------------------------
@@ -2205,11 +2292,11 @@ local function startMainSequence()
 				mainWindow.Position = UDim2.new(math.random(20, 80)/100, 0, math.random(20, 80)/100, 0)
 				mainWindow.ZIndex = 10
 				mainWindow.Parent = finalGui
-
+				
 				local mainCorner = Instance.new("UICorner")
 				mainCorner.CornerRadius = UDim.new(0, 5)
 				mainCorner.Parent = mainWindow
-
+				
 				local mainInner = Instance.new("Frame")
 				mainInner.Name = "InnerContainer"
 				mainInner.Size = UDim2.new(1, -4, 1, -4)
@@ -2217,11 +2304,11 @@ local function startMainSequence()
 				mainInner.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
 				mainInner.BorderSizePixel = 0
 				mainInner.Parent = mainWindow
-
+				
 				local mainInnerCorner = Instance.new("UICorner")
 				mainInnerCorner.CornerRadius = UDim.new(0, 4)
 				mainInnerCorner.Parent = mainInner
-
+				
 				local mainHeaderBar = Instance.new("Frame")
 				mainHeaderBar.Name = "HeaderBar"
 				mainHeaderBar.Size = UDim2.new(1, 0, 0, 22)
@@ -2229,11 +2316,11 @@ local function startMainSequence()
 				mainHeaderBar.BackgroundTransparency = 0
 				mainHeaderBar.BorderSizePixel = 0
 				mainHeaderBar.Parent = mainInner
-
+				
 				local mainHeaderCorner = Instance.new("UICorner")
 				mainHeaderCorner.CornerRadius = UDim.new(0, 4)
 				mainHeaderCorner.Parent = mainHeaderBar
-
+				
 				local mainHeaderText = Instance.new("TextLabel")
 				mainHeaderText.Name = "HeaderTitle"
 				mainHeaderText.Size = UDim2.new(1, -12, 1, 0)
@@ -2245,7 +2332,7 @@ local function startMainSequence()
 				mainHeaderText.Font = Enum.Font.SourceSansBold
 				mainHeaderText.TextXAlignment = Enum.TextXAlignment.Left
 				mainHeaderText.Parent = mainHeaderBar
-
+				
 				local mainImage = Instance.new("ImageLabel")
 				mainImage.Name = "ShapeImage_Main"
 				mainImage.Image = "rbxthumb://type=Asset&id=133985779703515&w=420&h=420"
@@ -2253,13 +2340,11 @@ local function startMainSequence()
 				mainImage.Size = UDim2.new(1, 0, 1, -22)
 				mainImage.Position = UDim2.new(0, 0, 0, 22)
 				mainImage.Parent = mainInner
-
-				-- R4NS0M TELEPORTS instead of sliding: new spot every RANSOM_TP_MIN..RANSOM_TP_MAX seconds,
-				-- but he still SHAKES (jitters) in place the whole time.
-				local mainBasePos = mainWindow.Position
+				
+				local mainTargetPos = mainWindow.Position
 				local mainTpElapsed = 0
-				local mainTpInterval = math.random(RANSOM_TP_MIN, RANSOM_TP_MAX)
-
+				local mainTpInterval = math.random(6, 8)
+				
 				local container = Instance.new("Frame")
 				container.Name = "CoinTextContainer"
 				container.Size = UDim2.new(0, 140, 0, 45)
@@ -2267,16 +2352,16 @@ local function startMainSequence()
 				container.Position = UDim2.new(0, 22, 1, -12)
 				container.BackgroundTransparency = 1
 				container.Parent = mainImage
-
+				
 				local listLayout = Instance.new("UIListLayout")
 				listLayout.FillDirection = Enum.FillDirection.Horizontal
 				listLayout.VerticalAlignment = Enum.VerticalAlignment.Center
 				listLayout.Padding = UDim.new(0, 4)
 				listLayout.Parent = container
-
+				
 				local displayCoins = 500.0
 				local targetCoins = 500
-
+				
 				local subText = Instance.new("TextLabel")
 				subText.Name = "BottomLeftText"
 				subText.Size = UDim2.new(0, 75, 0, 40)
@@ -2285,20 +2370,20 @@ local function startMainSequence()
 				subText.TextColor3 = Color3.fromRGB(255, 255, 0)
 				subText.TextScaled = true
 				subText.TextXAlignment = Enum.TextXAlignment.Left
-
+				
 				local textFontSuccess, textFontResult = pcall(function()
 					return Enum.Font.Oswald
 				end)
 				subText.Font = textFontSuccess and textFontResult or Enum.Font.SourceSansBold
 				subText.Parent = container
-
+				
 				local coinImage = Instance.new("ImageLabel")
 				coinImage.Name = "CoinImage"
 				coinImage.Image = "rbxthumb://type=Asset&id=12771100802&w=150&h=150"
 				coinImage.BackgroundTransparency = 1
 				coinImage.Size = UDim2.new(0, 40, 0, 40)
 				coinImage.Parent = container
-
+				
 				local timerText = Instance.new("TextLabel")
 				timerText.Name = "TimerText"
 				timerText.Size = UDim2.new(0, 115, 0, 50)
@@ -2310,46 +2395,47 @@ local function startMainSequence()
 				timerText.TextXAlignment = Enum.TextXAlignment.Right
 				timerText.Font = subText.Font
 				timerText.Parent = mainImage
-
+				
 				local timeRemaining = 90.0
-				local pulseOn = false
-
+				
 				local finalConn
 				finalConn = RunService.RenderStepped:Connect(function(dt)
 					if hasFailed or hasWon then return end
-
+					
 					-- WIN
 					if targetCoins <= 0 and not hasWon then
 						hasWon = true
 						if finalConn then finalConn:Disconnect() end
-
+						
 						stopTheme() -- the R4NS0M window is going away
+						unlockTools() -- you won: your tools work again
+						setVignetteColor(VIGNETTE_GREEN) -- the vignette turns green
+						setVignetteAlpha(1)
 						clearRoundObjects()
-						greenOutVignette() -- the vignette turns green and fades out
-
+						
 						local vicSound = Instance.new("Sound")
 						vicSound.Name = "VictorySound"
 						vicSound.SoundId = "rbxassetid://" .. tostring(VICTORY_SOUND_ID)
 						vicSound.Volume = 5
 						vicSound.Parent = SoundService
 						vicSound:Play()
-
+						
 						for _, popData in ipairs(backgroundPopups) do
 							if popData.Object and popData.Object.Parent then
 								popData.Object:Destroy()
 							end
 						end
-
+						
 						task.delay(0.4, function()
 							if finalGui then finalGui:Destroy() end
-
+							
 							local vicGui = Instance.new("ScreenGui")
 							vicGui.Name = "VictoryPopupGui"
 							vicGui.IgnoreGuiInset = true
 							vicGui.ResetOnSpawn = false
 							vicGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 							vicGui.Parent = playerGui
-
+							
 							local vicWindow = Instance.new("Frame")
 							vicWindow.Name = "VictoryWindow"
 							vicWindow.BackgroundColor3 = Color3.fromRGB(60, 0, 0)
@@ -2359,11 +2445,11 @@ local function startMainSequence()
 							vicWindow.Position = UDim2.new(0.5, 0, 0.5, 0)
 							vicWindow.ClipsDescendants = true
 							vicWindow.Parent = vicGui
-
+							
 							local vicCorner = Instance.new("UICorner")
 							vicCorner.CornerRadius = UDim.new(0, 5)
 							vicCorner.Parent = vicWindow
-
+							
 							local vicInner = Instance.new("Frame")
 							vicInner.Name = "InnerContainer"
 							vicInner.Size = UDim2.new(1, -4, 1, -4)
@@ -2371,11 +2457,11 @@ local function startMainSequence()
 							vicInner.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
 							vicInner.BorderSizePixel = 0
 							vicInner.Parent = vicWindow
-
+							
 							local vicInnerCorner = Instance.new("UICorner")
 							vicInnerCorner.CornerRadius = UDim.new(0, 4)
 							vicInnerCorner.Parent = vicInner
-
+							
 							local vicHeaderBar = Instance.new("Frame")
 							vicHeaderBar.Name = "HeaderBar"
 							vicHeaderBar.Size = UDim2.new(1, 0, 0, 22)
@@ -2383,11 +2469,11 @@ local function startMainSequence()
 							vicHeaderBar.BackgroundTransparency = 0
 							vicHeaderBar.BorderSizePixel = 0
 							vicHeaderBar.Parent = vicInner
-
+							
 							local vicHeaderCorner = Instance.new("UICorner")
 							vicHeaderCorner.CornerRadius = UDim.new(0, 4)
 							vicHeaderCorner.Parent = vicHeaderBar
-
+							
 							local vicHeaderText = Instance.new("TextLabel")
 							vicHeaderText.Name = "HeaderTitle"
 							vicHeaderText.Size = UDim2.new(1, -12, 1, 0)
@@ -2399,7 +2485,7 @@ local function startMainSequence()
 							vicHeaderText.Font = Enum.Font.SourceSansBold
 							vicHeaderText.TextXAlignment = Enum.TextXAlignment.Left
 							vicHeaderText.Parent = vicHeaderBar
-
+							
 							local vicImage = Instance.new("ImageLabel")
 							vicImage.Name = "CenterVictoryImage"
 							vicImage.Image = "rbxthumb://type=Asset&id=134494788780774&w=420&h=420"
@@ -2407,8 +2493,9 @@ local function startMainSequence()
 							vicImage.Size = UDim2.new(1, 0, 1, -22)
 							vicImage.Position = UDim2.new(0, 0, 0, 22)
 							vicImage.Parent = vicInner
-
+							
 							task.delay(4.0, function()
+								fadeVignetteOut(0.8) -- the green vignette fades away with the winning pop-up
 								if vicWindow and vicWindow.Parent then
 									local tweenInfo = TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 									local shrinkTween = TweenService:Create(vicWindow, tweenInfo, {
@@ -2425,45 +2512,42 @@ local function startMainSequence()
 						end)
 						return
 					end
-
+					
 					timeRemaining -= dt
 					local mins = math.floor(timeRemaining / 60)
 					local secs = math.floor(timeRemaining % 60)
 					timerText.Text = string.format("%d:%02d", mins, secs)
-
-					-- VIGNETTE PULSE: once the timer is at/under 30s it fades out/in every 0.5s
-					if timeRemaining <= VIGNETTE_PULSE_AT then
-						if not pulseOn then
-							pulseOn = true
-							startPulse()
-						end
-					elseif pulseOn then
-						pulseOn = false
-						stopPulse()
+					
+					-- last 30 seconds: the vignette fades in and out
+					if timeRemaining <= VIGNETTE_PULSE_START then
+						local T = VIGNETTE_PULSE_TIME
+						local ph = (os.clock() % (2 * T)) / T
+						setVignetteAlpha(ph < 1 and ph or 2 - ph)
 					end
-
+					
 					-- FAIL
 					if timeRemaining <= 0 and not hasFailed then
 						hasFailed = true
 						if finalConn then finalConn:Disconnect() end
-
+						
 						stopTheme() -- the R4NS0M window is going away
+						wipeInventory() -- you lost: every tool except CD-1 and Crucifix is deleted
+						destroyVignette()
 						clearRoundObjects()
-						removeVignette()
 						if finalGui then finalGui:Destroy() end
-
+						
 						local failGui = Instance.new("ScreenGui")
 						failGui.Name = "FailureJumpscareGui"
 						failGui.IgnoreGuiInset = true
 						failGui.ResetOnSpawn = false
 						failGui.Parent = playerGui
-
+						
 						local failBg = Instance.new("Frame")
 						failBg.Size = UDim2.new(1, 0, 1, 0)
 						failBg.BackgroundColor3 = Color3.fromRGB(40, 0, 0)
 						failBg.BorderSizePixel = 0
 						failBg.Parent = failGui
-
+						
 						local failImage = Instance.new("ImageLabel")
 						failImage.Image = "rbxthumb://type=Asset&id=12436809176&w=420&h=420"
 						failImage.BackgroundTransparency = 1
@@ -2471,7 +2555,7 @@ local function startMainSequence()
 						failImage.AnchorPoint = Vector2.new(0.5, 0.5)
 						failImage.Position = UDim2.new(0.5, 0, 0.5, 0)
 						failImage.Parent = failBg
-
+						
 						local failElapsed = 0
 						local failImageOriginalPos = failImage.Position
 						local failConn
@@ -2480,11 +2564,11 @@ local function startMainSequence()
 							local sx = math.random(-8, 8)
 							local sy = math.random(-8, 8)
 							failImage.Position = failImageOriginalPos + UDim2.new(0, sx, 0, sy)
-
+							
 							if failElapsed >= 0.8 then
 								failConn:Disconnect()
 								if failGui then failGui:Destroy() end
-
+								
 								local char = player.Character
 								if char then
 									local humanoid = char:FindFirstChildOfClass("Humanoid")
@@ -2497,34 +2581,28 @@ local function startMainSequence()
 						end)
 						return
 					end
-
-					-- R4NS0M TELEPORT + SHAKE:
-					-- every RANSOM_TP_MIN..RANSOM_TP_MAX seconds he jumps to a brand-new spot on screen...
+					
+					-- the window stays still (shaking by 1 pixel) and teleports to a new spot every 6 to 8 seconds
 					mainTpElapsed += dt
 					if mainTpElapsed >= mainTpInterval then
 						mainTpElapsed = 0
-						mainTpInterval = math.random(RANSOM_TP_MIN, RANSOM_TP_MAX)
-						mainBasePos = UDim2.new(math.random(15, 85)/100, 0, math.random(15, 85)/100, 0)
-						mainWindow.Position = mainBasePos
-					else
-						-- ...and between teleports he just SHAKES in place
-						local rx = math.random(-RANSOM_SHAKE, RANSOM_SHAKE)
-						local ry = math.random(-RANSOM_SHAKE, RANSOM_SHAKE)
-						mainWindow.Position = mainBasePos + UDim2.new(0, rx, 0, ry)
+						mainTpInterval = math.random(6, 8)
+						mainTargetPos = UDim2.new(math.random(15, 85)/100, 0, math.random(15, 85)/100, 0)
 					end
-
+					mainWindow.Position = mainTargetPos + UDim2.new(0, math.random(-1, 1), 0, math.random(-1, 1))
+					
 					-- Update pop-ups (Shake, Red flicker & Despawn checks)
 					for _, popData in ipairs(backgroundPopups) do
 						if popData.Object and popData.Object.Parent then
 							if not popData.IsDespawning then
 								popData.Elapsed += dt
-
+								
 								if popData.IsShaking then
 									local sx = math.random(-3, 3)
 									local sy = math.random(-3, 3)
 									popData.Object.Position = popData.BasePosition + UDim2.new(0, sx, 0, sy)
 								end
-
+								
 								-- red flicker: only this window, 10% chance rolled every second
 								if popData.FlickerLeft > 0 then
 									popData.FlickerLeft -= dt
@@ -2541,7 +2619,7 @@ local function startMainSequence()
 										end
 									end
 								end
-
+								
 								if popData.Elapsed >= popData.DespawnTimer then
 									popData.IsDespawning = true
 									popData.Flicker.Visible = false
@@ -2562,7 +2640,7 @@ local function startMainSequence()
 							end
 						end
 					end
-
+					
 					if displayCoins > targetCoins then
 						displayCoins = math.max(targetCoins, displayCoins - (dt * 120))
 						subText.Text = tostring(math.round(displayCoins))
@@ -2571,24 +2649,25 @@ local function startMainSequence()
 						subText.Text = tostring(math.round(displayCoins))
 					end
 				end)
-
+				
 				----------------------------------------------------------------
 				-- CRUCIFIX: the round is "crucified" (R4NS0M disappears completely)
 				----------------------------------------------------------------
 				local crucifyBusy = false
-
+				
 				local function isRoundActive()
 					return finalGui ~= nil and finalGui.Parent ~= nil and not hasWon and not hasFailed
 				end
-
+				
 				-- Everything of R4NS0M vanishes: window, pop-ups, theme, coins, drawers. No victory, no failure.
 				local function crucifyRound()
 					hasWon = true -- stops the timer, the coin spawner and the pop-up spawner
 					if finalConn then finalConn:Disconnect() end
 					stopTheme()
+					unlockTools() -- crucified: your tools work again
+					fadeVignetteOut(0.5) -- the vignette fades away
 					clearRoundObjects()
-					removeVignette()
-
+					
 					local info = TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.In)
 					mainWindow.ClipsDescendants = true
 					TweenService:Create(mainWindow, info, {
@@ -2609,20 +2688,20 @@ local function startMainSequence()
 						end
 					end)
 				end
-
+				
 				-- The big light blue cross: appears in front of you, image shakes, sinks into the ground after a few seconds
 				local function spawnCrucifixCross()
 					if not crossTemplate then return end
 					local char = player.Character
 					local hrp = char and char:FindFirstChild("HumanoidRootPart")
 					if not hrp then return end
-
+					
 					local flat = Vector3.new(hrp.CFrame.LookVector.X, 0, hrp.CFrame.LookVector.Z)
 					if flat.Magnitude < 0.1 then
 						flat = Vector3.new(0, 0, -1)
 					end
 					flat = flat.Unit
-
+					
 					local target = hrp.Position + flat * CRUCIFIX_CROSS_DISTANCE
 					local rp = RaycastParams.new()
 					rp.FilterType = Enum.RaycastFilterType.Exclude
@@ -2630,18 +2709,18 @@ local function startMainSequence()
 					rp.FilterDescendantsInstances = {char}
 					local hit = Workspace:Raycast(target + Vector3.new(0, 6, 0), Vector3.new(0, -40, 0), rp)
 					local groundPos = hit and hit.Position or Vector3.new(target.X, hrp.Position.Y - 3, target.Z)
-
+					
 					local cross = crossTemplate:Clone()
 					cross.Name = "R4NS0M_CrucifixCross"
 					cross:PivotTo(CFrame.lookAt(groundPos, groundPos - flat) * CRUCIFIX_CROSS_ROTATION)
-
+					
 					local cf, size = cross:GetBoundingBox()
 					cross:PivotTo(cross:GetPivot() + Vector3.new(0, groundPos.Y - (cf.Position.Y - size.Y / 2), 0))
 					cf, size = cross:GetBoundingBox()
-
+					
 					-- light blue + bright glow
 					tintModel(cross, CRUCIFIX_LIGHT_COLOR)
-
+					
 					-- invisible part in the middle of the cross that holds the light + the image
 					local center = Instance.new("Part")
 					center.Name = "CrossCenter"
@@ -2653,14 +2732,14 @@ local function startMainSequence()
 					center.CanQuery = false
 					center.CFrame = cf
 					center.Parent = cross
-
+					
 					local light = Instance.new("PointLight")
 					light.Color = CRUCIFIX_LIGHT_COLOR
 					light.Brightness = CRUCIFIX_LIGHT_BRIGHTNESS
 					light.Range = CRUCIFIX_LIGHT_RANGE
 					light.Shadows = false
 					light.Parent = center
-
+					
 					local s = math.max(size.X, size.Y) * CRUCIFIX_IMAGE_SIZE
 					local gui = Instance.new("BillboardGui")
 					gui.Name = "CrossImage"
@@ -2669,7 +2748,7 @@ local function startMainSequence()
 					gui.LightInfluence = 0
 					gui.Size = UDim2.new(s, 0, s, 0)
 					gui.Parent = center
-
+					
 					local img = Instance.new("ImageLabel")
 					img.BackgroundTransparency = 1
 					img.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -2677,9 +2756,9 @@ local function startMainSequence()
 					img.Size = UDim2.new(1, 0, 1, 0)
 					img.Image = "rbxthumb://type=Asset&id=" .. tostring(CRUCIFIX_IMAGE_ID) .. "&w=420&h=420"
 					img.Parent = gui
-
+					
 					cross.Parent = Workspace
-
+					
 					task.spawn(function()
 						-- 1) the image shakes a lot, like it's crying for help
 						local t0 = os.clock()
@@ -2688,7 +2767,7 @@ local function startMainSequence()
 							img.Rotation = (math.random() - 0.5) * 24
 							RunService.Heartbeat:Wait()
 						end
-
+						
 						-- 2) cross + image go through the ground
 						if cross.Parent then
 							img.Position = UDim2.new(0.5, 0, 0.5, 0)
@@ -2712,24 +2791,24 @@ local function startMainSequence()
 						end
 					end)
 				end
-
+				
 				-- Using the held crucifix while R4NS0M is active
 				local function onCrucifixActivated(tool)
 					if crucifyBusy or not isRoundActive() then return end
 					crucifyBusy = true
-
+					
 					-- both sounds at the same moment
 					playOneShot(CRUCIFIX_SOUND_ID_1, CRUCIFIX_SOUND_VOLUME)
 					playOneShot(CRUCIFIX_SOUND_ID_2, CRUCIFIX_SOUND_VOLUME)
-
+					
 					spawnCrucifixCross()
 					crucifyRound()
-
+					
 					if CRUCIFIX_CONSUMED and tool then
 						tool:Destroy()
 					end
 				end
-
+				
 				----------------------------------------------------------------
 				-- COIN REWARD (shared by coin pickups and the drawer):
 				-- coin bits fly to the R4NS0M window + the counter drops
@@ -2744,18 +2823,18 @@ local function startMainSequence()
 						if collectSound then collectSound:Destroy() end
 					end)
 				end
-
+				
 				local function awardCoin(coinWorldPos)
 					task.spawn(function()
 						local particleGui = Instance.new("ScreenGui")
 						particleGui.IgnoreGuiInset = true
 						particleGui.Parent = playerGui
-
+						
 						local camera = Workspace.CurrentCamera
 						local vector, onScreen = camera:WorldToViewportPoint(coinWorldPos)
 						local startX = onScreen and vector.X or (camera.ViewportSize.X / 2)
 						local startY = onScreen and vector.Y or (camera.ViewportSize.Y / 2)
-
+						
 						local numBits = 8
 						local bits = {}
 						for b = 1, numBits do
@@ -2765,7 +2844,7 @@ local function startMainSequence()
 							bit.Size = UDim2.new(0, 12, 0, 12)
 							bit.Position = UDim2.new(0, startX, 0, startY)
 							bit.Parent = particleGui
-
+							
 							local scatterAngle = math.random() * math.pi * 2
 							local scatterDist = math.random(30, 70)
 							table.insert(bits, {
@@ -2776,7 +2855,7 @@ local function startMainSequence()
 								StartY = startY
 							})
 						end
-
+						
 						local shatterDuration = 0.45
 						local sElapsed = 0
 						while sElapsed < shatterDuration do
@@ -2784,7 +2863,7 @@ local function startMainSequence()
 							sElapsed += dt
 							local alpha = math.clamp(sElapsed / shatterDuration, 0, 1)
 							local targetAbsPos = mainWindow.AbsolutePosition + (mainWindow.AbsoluteSize / 2)
-
+							
 							for _, data in ipairs(bits) do
 								if data.Object and data.Object.Parent then
 									local curX, curY
@@ -2803,7 +2882,7 @@ local function startMainSequence()
 						end
 						particleGui:Destroy()
 					end)
-
+					
 					local deductions = {5, 10, 20, 50, 100}
 					local chosenDeduct = deductions[math.random(1, #deductions)]
 					if targetCoins > 0 then
@@ -2817,7 +2896,7 @@ local function startMainSequence()
 						end)
 					end
 				end
-
+				
 				----------------------------------------------------------------
 				-- GROUND FINDER: only returns flat ground that is clear of walls/props
 				----------------------------------------------------------------
@@ -2826,13 +2905,13 @@ local function startMainSequence()
 					rayParams.FilterType = Enum.RaycastFilterType.Exclude
 					rayParams.IgnoreWater = true
 					rayParams.FilterDescendantsInstances = {character}
-
+					
 					local overlapParams = OverlapParams.new()
 					overlapParams.FilterType = Enum.RaycastFilterType.Exclude
 					overlapParams.FilterDescendantsInstances = {character}
-
+					
 					local playerGroundY = rootPart.Position.Y - 3
-
+					
 					for _ = 1, 12 do
 						local angle = math.random() * math.pi * 2
 						local distance = math.random(15, 45)
@@ -2841,9 +2920,9 @@ local function startMainSequence()
 							rootPart.Position.Y + 3,
 							rootPart.Position.Z + math.sin(angle) * distance
 						)
-
+						
 						local result = Workspace:Raycast(origin, Vector3.new(0, -30, 0), rayParams)
-
+						
 						if result and result.Normal.Y > 0.85 and math.abs(result.Position.Y - playerGroundY) <= 4 then
 							local blocked = false
 							local nearby = Workspace:GetPartBoundsInRadius(result.Position + Vector3.new(0, 1.6, 0), 1.1, overlapParams)
@@ -2858,10 +2937,10 @@ local function startMainSequence()
 							end
 						end
 					end
-
+					
 					return nil
 				end
-
+				
 				----------------------------------------------------------------
 				-- Sits the model so its bottom touches the ground
 				----------------------------------------------------------------
@@ -2876,7 +2955,7 @@ local function startMainSequence()
 					end
 					obj:PivotTo(obj:GetPivot() + Vector3.new(0, groundPos.Y - bottomY + COIN_HOVER, 0))
 				end
-
+				
 				-- Gives the player a fresh copy of a tool (CD-1 or Crucifix)
 				local function giveTool(template, isCrucifix)
 					if not template then return end
@@ -2891,27 +2970,27 @@ local function startMainSequence()
 						end
 					end
 				end
-
+				
 				----------------------------------------------------------------
 				-- DRAWER: "Loot Drawer" prompt, gamble for a coin, prompt vanishes after one tap
 				----------------------------------------------------------------
 				local function spawnDrawer(groundPos, playerPos)
 					if not drawerTemplate then return false end
-
+					
 					local drawer = drawerTemplate:Clone()
 					drawer.Name = "R4NS0M_Drawer"
-
+					
 					local look = Vector3.new(playerPos.X - groundPos.X, 0, playerPos.Z - groundPos.Z)
 					local faceCF = CFrame.new(groundPos)
 					if look.Magnitude > 0.1 then
 						faceCF = CFrame.lookAt(groundPos, groundPos + look)
 					end
 					drawer:PivotTo(faceCF * DRAWER_ROTATION)
-
+					
 					local cf, size = drawer:GetBoundingBox()
 					drawer:PivotTo(drawer:GetPivot() + Vector3.new(0, groundPos.Y - (cf.Position.Y - size.Y / 2), 0))
 					cf, size = drawer:GetBoundingBox()
-
+					
 					-- Don't spawn inside walls / props
 					local overlapParams = OverlapParams.new()
 					overlapParams.FilterType = Enum.RaycastFilterType.Exclude
@@ -2924,14 +3003,14 @@ local function startMainSequence()
 							return false
 						end
 					end
-
+					
 					-- Biggest part holds the prompt
 					local main = getMainPart(drawer)
 					if not main then
 						drawer:Destroy()
 						return false
 					end
-
+					
 					local prompt = Instance.new("ProximityPrompt")
 					prompt.Name = "DrawerPrompt"
 					prompt.ObjectText = ""
@@ -2941,17 +3020,17 @@ local function startMainSequence()
 					prompt.RequiresLineOfSight = false
 					prompt.KeyboardKeyCode = Enum.KeyCode.E
 					prompt.Parent = main
-
+					
 					drawer.Parent = Workspace
-
+					
 					local used = false
 					prompt.Triggered:Connect(function(plr)
 						if plr ~= player or used then return end
 						used = true
 						prompt:Destroy() -- the option disappears after one tap
-
+						
 						if hasWon or hasFailed then return end
-
+						
 						if math.random() < DRAWER_COIN_CHANCE then
 							-- WIN the gamble: counts like picking up a coin
 							playCollectSound()
@@ -2971,37 +3050,37 @@ local function startMainSequence()
 							end)
 						end
 					end)
-
+					
 					print("[R4NS0M] A drawer spawned at " .. tostring(groundPos))
 					return true
 				end
-
-				-- COIN / CD / CRUCIFIX / TV / DRAWER SPAWNER (the CD / TV / drawer chances come from the config window)
+				
+				-- COIN / CD / CRUCIFIX / TV / DRAWER SPAWNER (all the chances come from the config window)
 				local function spawnDoorsCompatibleCoin()
 					task.spawn(function()
 						local character = player.Character or player.CharacterAdded:Wait()
 						local rootPart = character:WaitForChild("HumanoidRootPart", 5)
 						if not rootPart then return end
-
+						
 						local groundPos = findGroundPosition(rootPart, character)
 						if not groundPos then return end
-
+						
 						-- TV roll (only ONE TV exists at a time; it stays after the round ends)
 						if not Workspace:FindFirstChild("R4NS0M_TV") and tvTemplate ~= nil and math.random() < settings.tvRate / 100 then
 							spawnTV(groundPos, rootPart.Position)
 							return
 						end
-
+						
 						-- Drawer roll (spawns instead of a coin this cycle)
 						if drawerTemplate ~= nil and math.random() < settings.drawerRate / 100 then
 							if spawnDrawer(groundPos, rootPart.Position) then
 								return
 							end
 						end
-
+						
 						-- What is this spawn? "coin", "cd" or "crucifix"
 						local kind = "coin"
-						if crucifixSpawnCount < CRUCIFIX_MAX_SPAWNS and crucifixToolTemplate ~= nil and math.random() < CRUCIFIX_CHANCE then
+						if crucifixSpawnCount < CRUCIFIX_MAX_SPAWNS and crucifixToolTemplate ~= nil and math.random() < settings.crucifixRate / 100 then
 							crucifixSpawnCount += 1
 							kind = "crucifix"
 							print("[R4NS0M] A crucifix spawned at " .. tostring(groundPos))
@@ -3010,7 +3089,7 @@ local function startMainSequence()
 							kind = "cd"
 							print("[R4NS0M] A CD-1 spawned at " .. tostring(groundPos))
 						end
-
+						
 						local coinObj
 						if kind == "crucifix" then
 							coinObj = makeToolDisplay(crucifixToolTemplate)
@@ -3023,7 +3102,7 @@ local function startMainSequence()
 						elseif coinTemplate then
 							coinObj = coinTemplate:Clone()
 							coinObj.Name = "MapCollectibleCoin"
-
+							
 							if COIN_SCALE ~= 1 then
 								if coinObj:IsA("Model") then
 									pcall(function()
@@ -3033,7 +3112,7 @@ local function startMainSequence()
 									coinObj.Size = coinObj.Size * COIN_SCALE
 								end
 							end
-
+							
 							placeModelOnGround(coinObj, groundPos)
 							coinObj.Parent = Workspace
 						else
@@ -3048,7 +3127,7 @@ local function startMainSequence()
 							coinObj.Color = Color3.fromRGB(255, 215, 0)
 							coinObj.Parent = Workspace
 						end
-
+						
 						-- The option you have to tap to pick it up
 						local promptText = "Collect Coins"
 						if kind == "cd" then
@@ -3056,24 +3135,24 @@ local function startMainSequence()
 						elseif kind == "crucifix" then
 							promptText = "Pick Up " .. CRUCIFIX_TOOL_NAME
 						end
-
+						
 						local pickPrompt = addPickupPrompt(coinObj, promptText)
 						if not pickPrompt then
 							coinObj:Destroy()
 							return
 						end
-
+						
 						local collected = false
 						pickPrompt.Triggered:Connect(function(plr)
 							if plr ~= player or collected then return end
 							if hasFailed or hasWon then return end
 							collected = true
-
+							
 							local coinWorldPos = coinObj:GetPivot().Position
 							coinObj:Destroy()
-
+							
 							playCollectSound()
-
+							
 							-- TOOL PICKUPS: go to your inventory, don't change the coin counter
 							if kind == "cd" then
 								giveTool(cdToolTemplate, false)
@@ -3082,28 +3161,28 @@ local function startMainSequence()
 								giveTool(crucifixToolTemplate, true)
 								return
 							end
-
+							
 							-- NORMAL COIN PICKUP
 							awardCoin(coinWorldPos)
 						end)
 					end)
 				end
-
+				
 				task.spawn(function()
 					while finalGui and finalGui.Parent and not hasFailed and not hasWon do
 						spawnDoorsCompatibleCoin()
 						task.wait(1.2)
 					end
 				end)
-
+				
 				return
 			end
-
+			
 			local shakeX = math.random(-6, 6)
 			local shakeY = math.random(-6, 6)
 			textLabel.Position = originalTextPos + UDim2.new(0, shakeX, 0, shakeY)
 			barContainer.Position = originalBarPos + UDim2.new(0, shakeX, 0, shakeY)
-
+			
 			local dotCycle = math.floor(phase2Elapsed * 6) % 3
 			if dotCycle == 0 then
 				textLabel.Text = "Downloading."
@@ -3112,7 +3191,7 @@ local function startMainSequence()
 			else
 				textLabel.Text = "Downloading..."
 			end
-
+			
 			if math.floor(phase2Elapsed * 15) % 2 == 0 then
 				textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 			else
@@ -3124,7 +3203,7 @@ end
 
 --------------------------------------------------------------------------------
 -- SPAWN R4NS0M ("stand still" warning, then the round)
---   1) image in the top-left corner (+ spawn sound) -> the corner image can now spawn on ANY side
+--   1) image on a random side / corner of the screen (+ spawn sound)
 --   2) it disappears, a new image shows in the center on a dark red bg
 --   3) both disappear for a moment
 --   4) the first image comes back to the center on a half transparent dark red bg that flickers
@@ -3137,7 +3216,7 @@ local function spawnRansom()
 	mainSequenceTriggered = false
 	cdSpawned = false
 	crucifixSpawnCount = 0
-
+	
 	local myGui = Instance.new("ScreenGui")
 	myGui.Name = "JumpscareDownloadGui"
 	myGui.IgnoreGuiInset = true
@@ -3145,7 +3224,7 @@ local function spawnRansom()
 	myGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 	myGui.Parent = playerGui
 	preGui = myGui
-
+	
 	-- dark red background (hidden until it is needed)
 	local preBg = Instance.new("Frame")
 	preBg.Size = UDim2.new(1, 0, 1, 0)
@@ -3155,7 +3234,7 @@ local function spawnRansom()
 	preBg.Visible = false
 	preBg.ZIndex = 1
 	preBg.Parent = myGui
-
+	
 	local function makePreImage(id, size, anchor, pos)
 		local img = Instance.new("ImageLabel")
 		img.Image = "rbxthumb://type=Asset&id=" .. tostring(id) .. "&w=420&h=420"
@@ -3168,28 +3247,27 @@ local function spawnRansom()
 		img.Parent = myGui
 		return img
 	end
-
-	-- the corner image can spawn on ANY side of the screen (not just the top-left)
-	local cornerSpots = {
-		{anchor = Vector2.new(0, 0),   pos = UDim2.new(0, 20, 0, 20)},    -- top-left
-		{anchor = Vector2.new(1, 0),   pos = UDim2.new(1, -20, 0, 20)},   -- top-right
-		{anchor = Vector2.new(0, 1),   pos = UDim2.new(0, 20, 1, -20)},   -- bottom-left
-		{anchor = Vector2.new(1, 1),   pos = UDim2.new(1, -20, 1, -20)},  -- bottom-right
-		{anchor = Vector2.new(0.5, 0), pos = UDim2.new(0.5, 0, 0, 20)},   -- top-center
-		{anchor = Vector2.new(0.5, 1), pos = UDim2.new(0.5, 0, 1, -20)},  -- bottom-center
-		{anchor = Vector2.new(0, 0.5), pos = UDim2.new(0, 20, 0.5, 0)},   -- left-center
-		{anchor = Vector2.new(1, 0.5), pos = UDim2.new(1, -20, 0.5, 0)},  -- right-center
-	}
-	local cornerSpot = cornerSpots[1] -- default top-left
-	if math.random() < PRE_CORNER_RANDOM_CHANCE then
-		cornerSpot = cornerSpots[math.random(1, #cornerSpots)]
+	
+	-- where the first image shows up: usually a random spot on a random side, sometimes the top-left corner
+	local cornerAnchor, cornerPos = Vector2.new(0, 0), UDim2.new(0, 20, 0, 20) -- top-left (default)
+	if math.random() < PRE_RANDOM_SIDE_CHANCE then
+		local side = math.random(1, 4)
+		local t = math.random(10, 90) / 100
+		if side == 1 then -- left side
+			cornerAnchor, cornerPos = Vector2.new(0, 0.5), UDim2.new(0, 20, t, 0)
+		elseif side == 2 then -- right side
+			cornerAnchor, cornerPos = Vector2.new(1, 0.5), UDim2.new(1, -20, t, 0)
+		elseif side == 3 then -- top
+			cornerAnchor, cornerPos = Vector2.new(0.5, 0), UDim2.new(t, 0, 0, 20)
+		else -- bottom
+			cornerAnchor, cornerPos = Vector2.new(0.5, 1), UDim2.new(t, 0, 1, -20)
+		end
 	end
-
-	local cornerImage = makePreImage(PRE_IMAGE_A, PRE_CORNER_SIZE, cornerSpot.anchor, cornerSpot.pos)
+	local cornerImage = makePreImage(PRE_IMAGE_A, PRE_CORNER_SIZE, cornerAnchor, cornerPos)
 	local flashImage = makePreImage(PRE_IMAGE_B, PRE_CENTER_SIZE, Vector2.new(0.5, 0.5), UDim2.new(0.5, 0, 0.5, 0))
 	local stareImage = makePreImage(PRE_IMAGE_A, PRE_CENTER_SIZE, Vector2.new(0.5, 0.5), UDim2.new(0.5, 0, 0.5, 0))
 	cornerImage.Visible = true
-
+	
 	local mySound = Instance.new("Sound")
 	mySound.Name = "SpawnSound"
 	mySound.SoundId = "rbxassetid://92453621152905"
@@ -3197,10 +3275,10 @@ local function spawnRansom()
 	mySound.Parent = SoundService
 	mySound:Play()
 	spawnSound = mySound
-
+	
 	task.spawn(function()
 		local detecting = false -- moving only counts while this is true
-
+		
 		local function isMoving()
 			local char = player.Character
 			local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -3212,14 +3290,14 @@ local function spawnRansom()
 				or UserInputService:IsKeyDown(Enum.KeyCode.Up) or UserInputService:IsKeyDown(Enum.KeyCode.Down)
 				or UserInputService:IsKeyDown(Enum.KeyCode.Left) or UserInputService:IsKeyDown(Enum.KeyCode.Right)
 		end
-
+		
 		local waitConn
 		waitConn = RunService.RenderStepped:Connect(function()
 			if detecting and not mainSequenceTriggered and isMoving() then
 				startMainSequence() -- you moved while he is at the center: jumpscare + downloading text
 			end
 		end)
-
+		
 		local function aborted()
 			if mainSequenceTriggered then
 				waitConn:Disconnect()
@@ -3227,12 +3305,12 @@ local function spawnRansom()
 			end
 			return false
 		end
-
-		-- 1) image in the corner (spawn sound is already playing) - corner spot was chosen above
+		
+		-- 1) image on the side / corner (spawn sound is already playing)
 		task.wait(PRE_CORNER_TIME)
 		if aborted() then return end
 		cornerImage.Visible = false
-
+		
 		-- 2) a different image in the center on a dark red bg
 		preBg.BackgroundColor3 = Color3.fromRGB(80, 0, 0)
 		preBg.BackgroundTransparency = 0
@@ -3243,19 +3321,19 @@ local function spawnRansom()
 		end
 		task.wait(PRE_FLASH_TIME)
 		if aborted() then return end
-
+		
 		-- 3) everything disappears for a moment
 		flashImage.Visible = false
 		preBg.Visible = false
 		task.wait(PRE_GAP_TIME)
 		if aborted() then return end
-
+		
 		-- 4) the first image comes back to the center on a half transparent dark red bg that flickers
 		stareImage.Visible = true
 		preBg.BackgroundTransparency = 0.5
 		preBg.Visible = true
 		detecting = true
-
+		
 		local t0 = os.clock()
 		local nextFlip = 0
 		local bright = false
@@ -3268,16 +3346,16 @@ local function spawnRansom()
 			end
 			RunService.Heartbeat:Wait()
 		end
-
+		
 		waitConn:Disconnect()
 		if mainSequenceTriggered then return end
-
+		
 		-- you stayed still the whole time: everything goes away and R4NS0M can spawn again
 		myGui:Destroy()
 		mySound:Destroy()
 		roundActive = false
 	end)
-
+	
 	return true
 end
 
@@ -3292,11 +3370,57 @@ cfgGui.DisplayOrder = 50
 cfgGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 cfgGui.Parent = playerGui
 
+-- makes `target` draggable by `handle`. onClick fires only if you tapped without dragging.
+-- clamp = keep the target on the screen (target must use an Offset-only position and AnchorPoint 0,0)
+local function makeDraggable(handle, target, onClick, clamp)
+	local dragging, moved = false, false
+	local dragStart, origin = nil, nil
+	
+	handle.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging, moved = true, false
+			dragStart = input.Position
+			origin = target.Position
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then
+					dragging = false
+					if not moved and onClick then
+						onClick()
+					end
+				end
+			end)
+		end
+	end)
+	
+	local conn = UserInputService.InputChanged:Connect(function(input)
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+			local d = input.Position - dragStart
+			if d.Magnitude > 6 then
+				moved = true
+			end
+			if moved then
+				local nx = origin.X.Offset + d.X
+				local ny = origin.Y.Offset + d.Y
+				if clamp then
+					local cam = Workspace.CurrentCamera
+					local vp = cam and cam.ViewportSize or Vector2.new(800, 600)
+					nx = math.clamp(nx, 0, math.max(0, vp.X - target.AbsoluteSize.X))
+					ny = math.clamp(ny, 0, math.max(0, vp.Y - target.AbsoluteSize.Y))
+				end
+				target.Position = UDim2.new(origin.X.Scale, nx, origin.Y.Scale, ny)
+			end
+		end
+	end)
+	cfgGui.Destroying:Connect(function()
+		conn:Disconnect()
+	end)
+end
+
 local cfgWindow = Instance.new("Frame")
 cfgWindow.Name = "ConfigWindow"
 cfgWindow.BackgroundColor3 = Color3.fromRGB(60, 0, 0)
 cfgWindow.BorderSizePixel = 0
-cfgWindow.Size = UDim2.new(0, 300, 0, 262)
+cfgWindow.Size = UDim2.new(0, 300, 0, 342)
 cfgWindow.AnchorPoint = Vector2.new(0.5, 0.5)
 cfgWindow.Position = UDim2.new(0.5, 0, 0.5, 0)
 cfgWindow.Parent = cfgGui
@@ -3357,57 +3481,77 @@ local closeCorner = Instance.new("UICorner")
 closeCorner.CornerRadius = UDim.new(0, 3)
 closeCorner.Parent = closeBtn
 
--- small tab that reopens the window after you close it
-local openTab = Instance.new("TextButton")
-openTab.Name = "ConfigOpenTab"
-openTab.Size = UDim2.new(0, 72, 0, 26)
-openTab.AnchorPoint = Vector2.new(0, 0.5)
-openTab.Position = UDim2.new(0, 8, 0.5, 0)
-openTab.BackgroundColor3 = Color3.fromRGB(60, 0, 0)
-openTab.BorderSizePixel = 0
-openTab.Text = "CONFIG"
-openTab.TextColor3 = Color3.fromRGB(255, 255, 255)
-openTab.TextSize = 13
-openTab.Font = Enum.Font.SourceSansBold
-openTab.Visible = false
-openTab.Parent = cfgGui
-
-local openCorner = Instance.new("UICorner")
-openCorner.CornerRadius = UDim.new(0, 5)
-openCorner.Parent = openTab
-
 closeBtn.Activated:Connect(function()
 	cfgWindow.Visible = false
-	openTab.Visible = true
-end)
-openTab.Activated:Connect(function()
-	cfgWindow.Visible = true
-	openTab.Visible = false
 end)
 
 -- drag the window by its white header
-local dragging, dragStart, dragOrigin = false, nil, nil
-cfgHeader.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-		dragging = true
-		dragStart = input.Position
-		dragOrigin = cfgWindow.Position
-		input.Changed:Connect(function()
-			if input.UserInputState == Enum.UserInputState.End then
-				dragging = false
-			end
-		end)
-	end
-end)
-local dragConn = UserInputService.InputChanged:Connect(function(input)
-	if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-		local d = input.Position - dragStart
-		cfgWindow.Position = UDim2.new(dragOrigin.X.Scale, dragOrigin.X.Offset + d.X, dragOrigin.Y.Scale, dragOrigin.Y.Offset + d.Y)
-	end
-end)
-cfgGui.Destroying:Connect(function()
-	dragConn:Disconnect()
-end)
+makeDraggable(cfgHeader, cfgWindow, nil, false)
+
+-- FLOATING CONFIG BUTTON: always on screen, drag it anywhere, tap it to open / close the window
+local camVp = (Workspace.CurrentCamera and Workspace.CurrentCamera.ViewportSize) or Vector2.new(800, 600)
+local cfgButton = Instance.new("TextButton")
+cfgButton.Name = "ConfigButton"
+cfgButton.Size = UDim2.new(0, 104, 0, 34)
+cfgButton.AnchorPoint = Vector2.new(0, 0)
+cfgButton.Position = UDim2.new(0, 10, 0, math.floor(camVp.Y * 0.5 - 17))
+cfgButton.BackgroundColor3 = Color3.fromRGB(110, 0, 0)
+cfgButton.BorderSizePixel = 0
+cfgButton.AutoButtonColor = false
+cfgButton.Text = "R4NS0M"
+cfgButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+cfgButton.TextSize = 15
+cfgButton.Font = Enum.Font.Oswald
+cfgButton.ZIndex = 5
+cfgButton.Parent = cfgGui
+
+local btnCorner = Instance.new("UICorner")
+btnCorner.CornerRadius = UDim.new(1, 0)
+btnCorner.Parent = cfgButton
+
+local btnGradient = Instance.new("UIGradient")
+btnGradient.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 40, 40)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(70, 0, 0)),
+})
+btnGradient.Rotation = 90
+btnGradient.Parent = cfgButton
+
+local btnStroke = Instance.new("UIStroke")
+btnStroke.Color = Color3.fromRGB(255, 70, 70)
+btnStroke.Thickness = 2
+btnStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+btnStroke.Parent = cfgButton
+
+local btnTextStroke = Instance.new("UIStroke")
+btnTextStroke.Color = Color3.fromRGB(0, 0, 0)
+btnTextStroke.Thickness = 1.2
+btnTextStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+btnTextStroke.Parent = cfgButton
+
+-- glowing red pulse around the button
+TweenService:Create(btnStroke, TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+	Color = Color3.fromRGB(255, 190, 190),
+	Thickness = 3.5,
+}):Play()
+
+-- small "tap / drag" hint under the name
+local btnSub = Instance.new("TextLabel")
+btnSub.BackgroundTransparency = 1
+btnSub.Size = UDim2.new(1, 0, 0, 10)
+btnSub.AnchorPoint = Vector2.new(0, 1)
+btnSub.Position = UDim2.new(0, 0, 1, -2)
+btnSub.Text = "CONFIG"
+btnSub.TextColor3 = Color3.fromRGB(255, 210, 210)
+btnSub.TextSize = 8
+btnSub.Font = Enum.Font.SourceSansBold
+btnSub.ZIndex = 6
+btnSub.Parent = cfgButton
+cfgButton.TextYAlignment = Enum.TextYAlignment.Top
+
+makeDraggable(cfgButton, cfgButton, function()
+	cfgWindow.Visible = not cfgWindow.Visible
+end, true)
 
 -- content area
 local content = Instance.new("Frame")
@@ -3433,7 +3577,7 @@ contentList.Parent = content
 local defaultStatus = HAS_FILES and "Changes save instantly" or "Changes apply, but can't be saved (no file access)"
 local statusLabel = Instance.new("TextLabel")
 statusLabel.Name = "Status"
-statusLabel.LayoutOrder = 5
+statusLabel.LayoutOrder = 6
 statusLabel.Size = UDim2.new(1, 0, 0, 14)
 statusLabel.BackgroundTransparency = 1
 statusLabel.Text = defaultStatus
@@ -3476,13 +3620,14 @@ local function restartAuto()
 end
 
 -- one row: label on the left, number box on the right
+local rowBoxes = {}
 local function makeRow(order, labelText, key, minV, maxV, onChange)
 	local row = Instance.new("Frame")
 	row.LayoutOrder = order
 	row.Size = UDim2.new(1, 0, 0, 34)
 	row.BackgroundTransparency = 1
 	row.Parent = content
-
+	
 	local label = Instance.new("TextLabel")
 	label.Size = UDim2.new(0.6, 0, 1, 0)
 	label.BackgroundTransparency = 1
@@ -3493,7 +3638,7 @@ local function makeRow(order, labelText, key, minV, maxV, onChange)
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.TextWrapped = true
 	label.Parent = row
-
+	
 	local box = Instance.new("TextBox")
 	box.Size = UDim2.new(0.37, 0, 0, 26)
 	box.AnchorPoint = Vector2.new(1, 0.5)
@@ -3507,11 +3652,13 @@ local function makeRow(order, labelText, key, minV, maxV, onChange)
 	box.Font = Enum.Font.SourceSansBold
 	box.ClearTextOnFocus = false
 	box.Parent = row
-
+	
 	local boxCorner = Instance.new("UICorner")
 	boxCorner.CornerRadius = UDim.new(0, 4)
 	boxCorner.Parent = box
-
+	
+	rowBoxes[key] = box
+	
 	local function apply(final)
 		local n = tonumber(box.Text)
 		if n then
@@ -3540,12 +3687,42 @@ end
 makeRow(1, "Spawn Ransom every (seconds)  [0 = off]", "ransomEvery", 0, 3600, restartAuto)
 makeRow(2, "CD-1 spawn rate (%)", "cdRate", 0, 100, nil)
 makeRow(3, "TV spawn rate (%)", "tvRate", 0, 100, nil)
-makeRow(4, "Drawer spawn rate (%)", "drawerRate", 0, 100, nil)
+makeRow(4, "Crucifix spawn rate (%)", "crucifixRate", 0, 100, nil)
+makeRow(5, "Drawer spawn rate (%)", "drawerRate", 0, 100, nil)
+
+-- RESET TO DEFAULT button
+local resetBtn = Instance.new("TextButton")
+resetBtn.Name = "ResetButton"
+resetBtn.LayoutOrder = 7
+resetBtn.Size = UDim2.new(1, 0, 0, 30)
+resetBtn.BackgroundColor3 = Color3.fromRGB(90, 0, 0)
+resetBtn.BorderSizePixel = 0
+resetBtn.Text = "Reset To Default"
+resetBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+resetBtn.TextSize = 14
+resetBtn.Font = Enum.Font.SourceSansBold
+resetBtn.Parent = content
+
+local resetCorner = Instance.new("UICorner")
+resetCorner.CornerRadius = UDim.new(0, 4)
+resetCorner.Parent = resetBtn
+
+resetBtn.Activated:Connect(function()
+	for k, v in pairs(DEFAULTS) do
+		settings[k] = v
+		if rowBoxes[k] then
+			rowBoxes[k].Text = tostring(v)
+		end
+	end
+	local saved = saveSettings()
+	setStatus(saved and "Reset to default" or "Reset (can't save, no file access)")
+	restartAuto()
+end)
 
 -- big button at the bottom
 local spawnBtn = Instance.new("TextButton")
 spawnBtn.Name = "SpawnRansomButton"
-spawnBtn.LayoutOrder = 6
+spawnBtn.LayoutOrder = 8
 spawnBtn.Size = UDim2.new(1, 0, 0, 32)
 spawnBtn.BackgroundColor3 = Color3.fromRGB(60, 0, 0)
 spawnBtn.BorderSizePixel = 0
@@ -3575,4 +3752,4 @@ if settings.ransomEvery > 0 then
 			statusLabel.Text = defaultStatus
 		end
 	end)
-end
+end 
