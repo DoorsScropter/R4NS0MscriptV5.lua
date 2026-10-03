@@ -23,7 +23,7 @@ local THEME_EXTEND_JUMPSCARE = false -- true = after the jumpscare audio ends, t
 -- "STAND STILL" WARNING (the corner image -> center images, before the jumpscare)
 local PRE_IMAGE_A = 12350997710 -- shows in a corner / side of the screen, then comes back to the center
 local PRE_IMAGE_B = 12440673966 -- the quick flash in the center
-local PRE_CORNER_TIME = 0.2 -- seconds the image stays in the corner
+local PRE_CORNER_TIME = 0.5 -- seconds the image stays in the corner
 local PRE_FLASH_TIME = 0.4 -- seconds the flash image + dark red bg stay in the center
 local PRE_GAP_TIME = 0 -- seconds of nothing between the flash and the final stare
 local PRE_STARE_TIME = 0.7 -- seconds the final image stays in the center (with the flickering bg)
