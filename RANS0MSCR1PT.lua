@@ -20,18 +20,24 @@ local THEME_TARGET_SECONDS = 90 -- the theme is stretched / squeezed to last exa
 local THEME_VOLUME = 10 -- loud
 local THEME_EXTEND_JUMPSCARE = false -- true = after the jumpscare audio ends, the FIRST HALF of the theme is cloned in to extend the music
 
--- "STAND STILL" WARNING (the corner image -> center images, before the jumpscare)
-local PRE_IMAGE_A = 12350997710 -- shows in a corner / side of the screen, then comes back to the center
-local PRE_IMAGE_B = 12440673966 -- the quick flash in the center
-local PRE_CORNER_TIME = 0.5 -- seconds the image stays in the corner
-local PRE_FLASH_TIME = 0.4 -- seconds the flash image + dark red bg stay in the center
-local PRE_GAP_TIME = 0 -- seconds of nothing between the flash and the final stare
-local PRE_STARE_TIME = 0.7 -- seconds the final image stays in the center (with the flickering bg)
-local PRE_CORNER_SIZE = 150 -- size of the corner image (pixels)
-local PRE_CENTER_SIZE = 150 -- size of the center images (pixels)
-local PRE_FLICKER_SPEED = 50 -- how fast the dark red bg flickers during the final stare
-local PRE_DETECT_IN_FLASH = false -- false = moving only counts during the final stare (when he is at the center), true = also counts during the flash
-local PRE_RANDOM_SIDE_CHANCE = 0.6 -- chance the first image spawns on a random side instead of the top-left (0 = always top-left, 1 = always random)
+-- "STAND STILL" WARNING (4 steps before the jumpscare)
+--   1) image A shows up at a random spot of the screen
+--   2) image B in the center + the full screen image
+--   3) image A in the center + a half transparent red bg
+--   4) image A in the center + the full screen image
+--   moving while image A is in the center = jumpscare + downloading text
+local PRE_IMAGE_A = 12350997710 -- the main image (random spot first, then the center)
+local PRE_IMAGE_B = 12440673966 -- the image that flashes in the center in step 2
+local PRE_IMAGE_FULL = 122867299887975 -- the image that fills the whole screen (steps 2 and 4)
+local PRE_IMAGE_SIZE = 300 -- size of image A and image B (pixels)
+local PRE_STEP1_TIME = 0.4 -- seconds image A stays at its random spot
+local PRE_STEP2_TIME = 0.2 -- seconds image B + the full screen image stay
+local PRE_STEP3_TIME = 0.1 -- seconds image A + the red bg stay
+local PRE_STEP4_TIME = 0.2 -- seconds image A + the full screen image stay
+local PRE_RED_BG_COLOR = Color3.fromRGB(255, 0, 0) -- the red bg in step 3
+local PRE_RED_BG_TRANSPARENCY = 0.5 -- how see-through the red bg is
+local PRE_DETECT_IN_RED = true -- true = moving also counts in step 3 (image A in the center), false = only in step 4
+local PRE_DETECT_IN_FLASH = false -- false = moving doesn't count in step 2, true = it counts too
 
 -- DOWNLOADING SCREEN (the "Downloading..." text + loading bar)
 local DOWNLOAD_BLOCKS = 7 -- how many blocks the loading bar has (the total speed stays the same)
@@ -40,8 +46,13 @@ local DOWNLOAD_TEXT_OUTLINE_SIZE = 3 -- thickness of the text outline
 local DOWNLOAD_BAR_OUTLINE = Color3.fromRGB(140, 0, 0) -- red outline around the loading bar
 local DOWNLOAD_BAR_OUTLINE_SIZE = 3 -- thickness of the bar outline
 
+-- R4NS0M WINDOW
+local HUD_FONT = Enum.Font.Arcade -- pixelated font for the coin counter and the timer
+local TIMER_START_SECONDS = 90 -- the timer starts at 01:30
+
 -- VIGNETTE + SCREEN SHAKE (while the R4NS0M window is active)
 local VIGNETTE_SIZE = 0.07 -- how far the red edges reach inward (smaller = shorter)
+local VIGNETTE_TRANSPARENCY = 0.5 -- how see-through the vignette is at its strongest (0 = solid, 1 = invisible)
 local VIGNETTE_PULSE_START = 30 -- seconds left when it starts pulsing
 local VIGNETTE_PULSE_TIME = 0.5 -- seconds for each fade in / fade out
 local VIGNETTE_RED = Color3.fromRGB(255, 0, 0)
@@ -386,9 +397,10 @@ end
 
 local vignetteGui, vignetteFrames = nil, {}
 
+-- a = 1 is the strongest the vignette gets (VIGNETTE_TRANSPARENCY), a = 0 is invisible
 local function setVignetteAlpha(a)
 	for _, f in ipairs(vignetteFrames) do
-		f.BackgroundTransparency = 1 - a
+		f.BackgroundTransparency = 1 - a * (1 - VIGNETTE_TRANSPARENCY)
 	end
 end
 
@@ -1929,7 +1941,7 @@ local function startMainSequence()
 	end)
 
 	----------------------------------------------------------------------------
-	-- PHASE 2 (downloading text with a dark red outline + 10 block loading bar with a red outline)
+	-- PHASE 2 (downloading text with a dark red outline + loading bar with a red outline)
 	----------------------------------------------------------------------------
 	task.delay(phase1Duration, function()
 		local bgFrame = Instance.new("Frame")
@@ -2362,6 +2374,7 @@ local function startMainSequence()
 				local displayCoins = 500.0
 				local targetCoins = 500
 				
+				-- the coin counter (pixelated font)
 				local subText = Instance.new("TextLabel")
 				subText.Name = "BottomLeftText"
 				subText.Size = UDim2.new(0, 75, 0, 40)
@@ -2370,11 +2383,7 @@ local function startMainSequence()
 				subText.TextColor3 = Color3.fromRGB(255, 255, 0)
 				subText.TextScaled = true
 				subText.TextXAlignment = Enum.TextXAlignment.Left
-				
-				local textFontSuccess, textFontResult = pcall(function()
-					return Enum.Font.Oswald
-				end)
-				subText.Font = textFontSuccess and textFontResult or Enum.Font.SourceSansBold
+				subText.Font = HUD_FONT
 				subText.Parent = container
 				
 				local coinImage = Instance.new("ImageLabel")
@@ -2384,6 +2393,7 @@ local function startMainSequence()
 				coinImage.Size = UDim2.new(0, 40, 0, 40)
 				coinImage.Parent = container
 				
+				-- the timer (pixelated font, starts at 01:30)
 				local timerText = Instance.new("TextLabel")
 				timerText.Name = "TimerText"
 				timerText.Size = UDim2.new(0, 115, 0, 50)
@@ -2393,10 +2403,11 @@ local function startMainSequence()
 				timerText.TextColor3 = Color3.fromRGB(0, 0, 0)
 				timerText.TextScaled = true
 				timerText.TextXAlignment = Enum.TextXAlignment.Right
-				timerText.Font = subText.Font
+				timerText.Font = HUD_FONT
 				timerText.Parent = mainImage
 				
-				local timeRemaining = 90.0
+				local timeRemaining = TIMER_START_SECONDS + 0.0
+				timerText.Text = string.format("%02d:%02d", math.floor(timeRemaining / 60), math.floor(timeRemaining % 60))
 				
 				local finalConn
 				finalConn = RunService.RenderStepped:Connect(function(dt)
@@ -2514,9 +2525,10 @@ local function startMainSequence()
 					end
 					
 					timeRemaining -= dt
-					local mins = math.floor(timeRemaining / 60)
-					local secs = math.floor(timeRemaining % 60)
-					timerText.Text = string.format("%d:%02d", mins, secs)
+					local shownTime = math.max(0, timeRemaining)
+					local mins = math.floor(shownTime / 60)
+					local secs = math.floor(shownTime % 60)
+					timerText.Text = string.format("%02d:%02d", mins, secs)
 					
 					-- last 30 seconds: the vignette fades in and out
 					if timeRemaining <= VIGNETTE_PULSE_START then
@@ -3203,11 +3215,11 @@ end
 
 --------------------------------------------------------------------------------
 -- SPAWN R4NS0M ("stand still" warning, then the round)
---   1) image on a random side / corner of the screen (+ spawn sound)
---   2) it disappears, a new image shows in the center on a dark red bg
---   3) both disappear for a moment
---   4) the first image comes back to the center on a half transparent dark red bg that flickers
---   moving while he is at the center = jumpscare + downloading text
+--   1) image A shows up at a random spot of the screen (+ spawn sound)
+--   2) image B in the center + the full screen image
+--   3) image A in the center + a half transparent red bg
+--   4) image A in the center + the full screen image
+--   moving while image A is in the center = jumpscare + downloading text
 -- Called by the "Spawn Ransom" button and by the automatic timer. Returns false if a round is already running.
 --------------------------------------------------------------------------------
 local function spawnRansom()
@@ -3225,48 +3237,47 @@ local function spawnRansom()
 	myGui.Parent = playerGui
 	preGui = myGui
 	
-	-- dark red background (hidden until it is needed)
+	-- red bg (hidden until step 3)
 	local preBg = Instance.new("Frame")
 	preBg.Size = UDim2.new(1, 0, 1, 0)
-	preBg.BackgroundColor3 = Color3.fromRGB(80, 0, 0)
-	preBg.BackgroundTransparency = 1
+	preBg.BackgroundColor3 = PRE_RED_BG_COLOR
+	preBg.BackgroundTransparency = PRE_RED_BG_TRANSPARENCY
 	preBg.BorderSizePixel = 0
 	preBg.Visible = false
 	preBg.ZIndex = 1
 	preBg.Parent = myGui
 	
-	local function makePreImage(id, size, anchor, pos)
+	-- the image that fills the whole screen (steps 2 and 4)
+	local fullImage = Instance.new("ImageLabel")
+	fullImage.Image = "rbxthumb://type=Asset&id=" .. tostring(PRE_IMAGE_FULL) .. "&w=768&h=432"
+	fullImage.BackgroundTransparency = 1
+	fullImage.Size = UDim2.new(1, 0, 1, 0)
+	fullImage.Position = UDim2.new(0, 0, 0, 0)
+	fullImage.ZIndex = 2
+	fullImage.Visible = false
+	fullImage.Parent = myGui
+	
+	local function makePreImage(id, anchor, pos)
 		local img = Instance.new("ImageLabel")
 		img.Image = "rbxthumb://type=Asset&id=" .. tostring(id) .. "&w=420&h=420"
 		img.BackgroundTransparency = 1
-		img.Size = UDim2.new(0, size, 0, size)
+		img.Size = UDim2.new(0, PRE_IMAGE_SIZE, 0, PRE_IMAGE_SIZE)
 		img.AnchorPoint = anchor
 		img.Position = pos
-		img.ZIndex = 2
+		img.ZIndex = 3
 		img.Visible = false
 		img.Parent = myGui
 		return img
 	end
 	
-	-- where the first image shows up: usually a random spot on a random side, sometimes the top-left corner
-	local cornerAnchor, cornerPos = Vector2.new(0, 0), UDim2.new(0, 20, 0, 20) -- top-left (default)
-	if math.random() < PRE_RANDOM_SIDE_CHANCE then
-		local side = math.random(1, 4)
-		local t = math.random(10, 90) / 100
-		if side == 1 then -- left side
-			cornerAnchor, cornerPos = Vector2.new(0, 0.5), UDim2.new(0, 20, t, 0)
-		elseif side == 2 then -- right side
-			cornerAnchor, cornerPos = Vector2.new(1, 0.5), UDim2.new(1, -20, t, 0)
-		elseif side == 3 then -- top
-			cornerAnchor, cornerPos = Vector2.new(0.5, 0), UDim2.new(t, 0, 0, 20)
-		else -- bottom
-			cornerAnchor, cornerPos = Vector2.new(0.5, 1), UDim2.new(t, 0, 1, -20)
-		end
-	end
-	local cornerImage = makePreImage(PRE_IMAGE_A, PRE_CORNER_SIZE, cornerAnchor, cornerPos)
-	local flashImage = makePreImage(PRE_IMAGE_B, PRE_CENTER_SIZE, Vector2.new(0.5, 0.5), UDim2.new(0.5, 0, 0.5, 0))
-	local stareImage = makePreImage(PRE_IMAGE_A, PRE_CENTER_SIZE, Vector2.new(0.5, 0.5), UDim2.new(0.5, 0, 0.5, 0))
-	cornerImage.Visible = true
+	-- step 1: image A at a random spot (the anchor follows the position, so it never goes off the screen)
+	local rx, ry = math.random(), math.random()
+	local spotImage = makePreImage(PRE_IMAGE_A, Vector2.new(rx, ry), UDim2.new(rx, 0, ry, 0))
+	-- step 2: image B in the center
+	local flashImage = makePreImage(PRE_IMAGE_B, Vector2.new(0.5, 0.5), UDim2.new(0.5, 0, 0.5, 0))
+	-- steps 3 and 4: image A in the center
+	local stareImage = makePreImage(PRE_IMAGE_A, Vector2.new(0.5, 0.5), UDim2.new(0.5, 0, 0.5, 0))
+	spotImage.Visible = true
 	
 	local mySound = Instance.new("Sound")
 	mySound.Name = "SpawnSound"
@@ -3298,6 +3309,14 @@ local function spawnRansom()
 			end
 		end)
 		
+		-- waits `t` seconds (stops early if you triggered the jumpscare)
+		local function sleep(t)
+			local t0 = os.clock()
+			while os.clock() - t0 < t and not mainSequenceTriggered do
+				RunService.Heartbeat:Wait()
+			end
+		end
+		
 		local function aborted()
 			if mainSequenceTriggered then
 				waitConn:Disconnect()
@@ -3306,46 +3325,35 @@ local function spawnRansom()
 			return false
 		end
 		
-		-- 1) image on the side / corner (spawn sound is already playing)
-		task.wait(PRE_CORNER_TIME)
+		-- STEP 1: image A at its random spot (spawn sound is already playing)
+		sleep(PRE_STEP1_TIME)
 		if aborted() then return end
-		cornerImage.Visible = false
+		spotImage.Visible = false
 		
-		-- 2) a different image in the center on a dark red bg
-		preBg.BackgroundColor3 = Color3.fromRGB(80, 0, 0)
-		preBg.BackgroundTransparency = 0
-		preBg.Visible = true
+		-- STEP 2: image B in the center + the full screen image
+		fullImage.Visible = true
 		flashImage.Visible = true
-		if PRE_DETECT_IN_FLASH then
-			detecting = true
-		end
-		task.wait(PRE_FLASH_TIME)
+		detecting = PRE_DETECT_IN_FLASH
+		sleep(PRE_STEP2_TIME)
 		if aborted() then return end
-		
-		-- 3) everything disappears for a moment
+		fullImage.Visible = false
 		flashImage.Visible = false
-		preBg.Visible = false
-		task.wait(PRE_GAP_TIME)
-		if aborted() then return end
+		detecting = false
 		
-		-- 4) the first image comes back to the center on a half transparent dark red bg that flickers
-		stareImage.Visible = true
-		preBg.BackgroundTransparency = 0.5
+		-- STEP 3: image A in the center + the red bg
 		preBg.Visible = true
-		detecting = true
+		stareImage.Visible = true
+		detecting = PRE_DETECT_IN_RED
+		sleep(PRE_STEP3_TIME)
+		if aborted() then return end
+		preBg.Visible = false
+		stareImage.Visible = false
 		
-		local t0 = os.clock()
-		local nextFlip = 0
-		local bright = false
-		while os.clock() - t0 < PRE_STARE_TIME and not mainSequenceTriggered do
-			if os.clock() >= nextFlip then
-				bright = not bright
-				nextFlip = os.clock() + PRE_FLICKER_SPEED
-				preBg.BackgroundTransparency = bright and 0.5 or 0.85
-				preBg.BackgroundColor3 = bright and Color3.fromRGB(70, 0, 0) or Color3.fromRGB(130, 0, 0)
-			end
-			RunService.Heartbeat:Wait()
-		end
+		-- STEP 4: image A in the center + the full screen image
+		fullImage.Visible = true
+		stareImage.Visible = true
+		detecting = true
+		sleep(PRE_STEP4_TIME)
 		
 		waitConn:Disconnect()
 		if mainSequenceTriggered then return end
